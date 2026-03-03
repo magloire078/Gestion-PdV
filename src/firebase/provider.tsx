@@ -129,6 +129,17 @@ export const useFirebase = (): FirebaseServicesAndUser => {
   }
 
   if (!context.areServicesAvailable || !context.firebaseApp || !context.firestore || !context.auth || !context.storage) {
+    if (typeof window === 'undefined') {
+      return {
+        firebaseApp: context.firebaseApp as any,
+        firestore: context.firestore as any,
+        auth: context.auth as any,
+        storage: context.storage as any,
+        user: null,
+        isUserLoading: true,
+        userError: null,
+      };
+    }
     throw new Error('Firebase core services not available. Check FirebaseProvider props.');
   }
 
@@ -163,25 +174,25 @@ export const useFirebaseApp = (): FirebaseApp => {
 
 /** Hook to access Firebase Storage instance. */
 export const useStorage = (): FirebaseStorage => {
-    const { storage } = useFirebase();
-    return storage;
+  const { storage } = useFirebase();
+  return storage;
 };
 
-type MemoFirebase <T> = T & {__memo?: boolean};
+type MemoFirebase<T> = T & { __memo?: boolean };
 
 export function useMemoFirebase<T>(factory: () => T, deps: DependencyList): T {
-    const memoized = useMemo(factory, deps);
-  
-    if(memoized && typeof memoized === 'object') {
-        Object.defineProperty(memoized, '__memo', {
-            value: true,
-            writable: false,
-            enumerable: false,
-            configurable: false
-        });
-    }
-    
-    return memoized;
+  const memoized = useMemo(factory, deps);
+
+  if (memoized && typeof memoized === 'object') {
+    Object.defineProperty(memoized, '__memo', {
+      value: true,
+      writable: false,
+      enumerable: false,
+      configurable: false
+    });
+  }
+
+  return memoized;
 }
 
 

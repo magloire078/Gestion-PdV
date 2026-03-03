@@ -32,11 +32,12 @@ export function initializeFirebase() {
 }
 
 export function getSdks(firebaseApp: FirebaseApp) {
+  const isServer = typeof window === 'undefined';
   return {
     firebaseApp,
-    auth: getAuth(firebaseApp),
-    firestore: getFirestore(firebaseApp),
-    storage: getStorage(firebaseApp),
+    auth: isServer ? null as any : getAuth(firebaseApp),
+    firestore: isServer ? null as any : getFirestore(firebaseApp),
+    storage: isServer ? null as any : getStorage(firebaseApp),
   };
 }
 

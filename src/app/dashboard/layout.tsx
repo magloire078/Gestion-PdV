@@ -11,7 +11,9 @@ import {
   LogOut,
   Menu,
   Moon,
+  Package,
   Settings,
+  ShoppingCart,
   Sun,
   Users,
 } from "lucide-react";
@@ -40,7 +42,9 @@ const navItems = [
   { href: "/dashboard/invoices", icon: FileText, label: "Factures" },
   { href: "/dashboard/clients", icon: Users, label: "Clients" },
   { href: "/dashboard/expenses", icon: DollarSign, label: "Dépenses" },
+  { href: "/dashboard/products", icon: Package, label: "Produits POS" },
   { href: "/dashboard/reports", icon: LineChart, label: "Rapports" },
+  { href: "/pos", icon: ShoppingCart, label: "Caisse" },
   { href: "/dashboard/settings", icon: Settings, label: "Paramètres" },
 ];
 
@@ -73,19 +77,19 @@ function UserNav() {
         <DropdownMenuLabel>{user?.displayName ?? user?.email ?? 'Mon Compte'}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <Link href="/dashboard/settings">
-            <DropdownMenuItem>
-                <Settings className="mr-2 h-4 w-4" />
-                Paramètres
-            </DropdownMenuItem>
+          <DropdownMenuItem>
+            <Settings className="mr-2 h-4 w-4" />
+            Paramètres
+          </DropdownMenuItem>
         </Link>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => setTheme("light")}>
-            <Sun className="mr-2 h-4 w-4" />
-            Clair
+          <Sun className="mr-2 h-4 w-4" />
+          Clair
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("dark")}>
-            <Moon className="mr-2 h-4 w-4" />
-            Sombre
+          <Moon className="mr-2 h-4 w-4" />
+          Sombre
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleSignOut}>
@@ -98,74 +102,73 @@ function UserNav() {
 }
 
 function MobileNav({ logoUrl }: { logoUrl?: string | null }) {
-    const pathname = usePathname();
-    const [isOpen, setIsOpen] = useState(false);
-  
-    return (
-      <Sheet open={isOpen} onOpenChange={setIsOpen}>
-        <SheetTrigger asChild>
-          <Button variant="outline" size="icon" className="shrink-0 md:hidden">
-            <Menu className="h-5 w-5" />
-            <span className="sr-only">Toggle navigation menu</span>
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="flex flex-col">
-          <nav className="grid gap-2 text-lg font-medium">
+  const pathname = usePathname();
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      <SheetTrigger asChild>
+        <Button variant="outline" size="icon" className="shrink-0 md:hidden">
+          <Menu className="h-5 w-5" />
+          <span className="sr-only">Toggle navigation menu</span>
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="left" className="flex flex-col">
+        <nav className="grid gap-2 text-lg font-medium">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 text-lg font-semibold mb-4"
+            onClick={() => setIsOpen(false)}
+          >
+            <Logo logoUrl={logoUrl} />
+          </Link>
+          {navItems.map((item) => (
             <Link
-              href="/dashboard"
-              className="flex items-center gap-2 text-lg font-semibold mb-4"
+              key={item.href}
+              href={item.href}
               onClick={() => setIsOpen(false)}
-            >
-              <Logo logoUrl={logoUrl} />
-            </Link>
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setIsOpen(false)}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all ${
-                    pathname === item.href
-                    ? "text-primary bg-muted"
-                    : "text-muted-foreground hover:text-primary"
+              className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all ${pathname === item.href
+                  ? "text-primary bg-muted"
+                  : "text-muted-foreground hover:text-primary"
                 }`}
-              >
-                <item.icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </SheetContent>
-      </Sheet>
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const { user, isUserLoading } = useUser();
+  const router = useRouter();
+  const firestore = useFirestore();
+
+  const companyRef = useMemoFirebase(() => {
+    if (!user || !firestore) return null;
+    return doc(firestore, "companies", user.uid);
+  }, [firestore, user]);
+
+  const { data: company, isLoading: isCompanyLoading } = useDoc<Company>(companyRef);
+
+  useEffect(() => {
+    if (!isUserLoading && !user) {
+      router.push("/auth/signin");
+    }
+  }, [user, isUserLoading, router]);
+
+  if (isUserLoading || !user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="loader">Chargement...</div>
+      </div>
     );
   }
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-    const pathname = usePathname();
-    const { user, isUserLoading } = useUser();
-    const router = useRouter();
-    const firestore = useFirestore();
-
-    const companyRef = useMemoFirebase(() => {
-        if (!user || !firestore) return null;
-        return doc(firestore, "companies", user.uid);
-      }, [firestore, user]);
-    
-    const { data: company, isLoading: isCompanyLoading } = useDoc<Company>(companyRef);
-
-    useEffect(() => {
-      if (!isUserLoading && !user) {
-        router.push("/auth/signin");
-      }
-    }, [user, isUserLoading, router]);
-
-    if (isUserLoading || !user) {
-      return (
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="loader">Chargement...</div>
-        </div>
-      );
-    }
-    
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
       <div className="hidden border-r bg-card md:block">
@@ -186,11 +189,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all ${
-                    pathname === item.href
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all ${pathname === item.href
                       ? "text-primary bg-muted"
                       : "text-muted-foreground hover:text-primary"
-                  }`}
+                    }`}
                 >
                   <item.icon className="h-4 w-4" />
                   {item.label}
