@@ -2,16 +2,20 @@ import Dexie, { type Table } from 'dexie';
 
 export interface Product {
     id: string;
+    companyId: string;
     name: string;
     price: number;
     category: string;
-    image?: string;
+    imageUrl?: string;
+    barcode?: string;
     stock: number;
+    minStock?: number;
     synced: number; // 0 or 1
 }
 
 export interface Sale {
     id?: number;
+    companyId: string;
     items: {
         productId: string;
         name: string;
@@ -29,9 +33,9 @@ export class POSDatabase extends Dexie {
 
     constructor() {
         super('POSDatabase');
-        this.version(1).stores({
-            products: 'id, name, category, synced',
-            sales: '++id, timestamp, synced'
+        this.version(3).stores({
+            products: 'id, companyId, name, category, barcode, synced',
+            sales: '++id, companyId, timestamp, synced'
         });
     }
 }

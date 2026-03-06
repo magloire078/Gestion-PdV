@@ -58,11 +58,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoreHorizontal, PlusCircle, ArrowUpDown, ExternalLink, Loader2, Coins } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { useUser, useFirestore, useStorage, useCollection, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from "@/firebase";
-import { collection, doc } from "firebase/firestore";
+import { useUser, useFirestore, useStorage, useCollection, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useFirebase } from "@/firebase";
+import { collection, doc, query, where } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useProfile } from "@/hooks/use-profile";
 import type { Expense } from "@/lib/types";
 
 type SortKey = keyof Omit<Expense, 'id' | 'companyId'>;
@@ -122,16 +123,18 @@ export default function ExpensesPage() {
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'ascending' | 'descending' }>({ key: 'date', direction: 'descending' });
   const [isUploading, setIsUploading] = useState(false);
   const { user } = useUser();
+  const { company, isLoading: isProfileLoading } = useProfile();
   const firestore = useFirestore();
   const storage = useStorage();
   const { toast } = useToast();
 
-  const expensesCollectionRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return collection(firestore, `companies/${user.uid}/expenses`);
-  }, [firestore, user]);
+  const expensesQuery = useMemoFirebase(() => {
+    if (!company?.id || !firestore) return null;
+    return query(collection(firestore, "expenses"), where("companyId", "==", company.id));
+  }, [firestore, company?.id]);
 
-  const { data: expenses, isLoading } = useCollection<Omit<Expense, 'id'>>(expensesCollectionRef);
+  const { data: expenses, isLoading: isCollectionLoading } = useCollection<Expense>(expensesQuery);
+  const isLoading = isProfileLoading || isCollectionLoading;
 
   const sortedExpenses = useMemo(() => {
     let sortableItems = expenses ? [...expenses] : [];
@@ -169,7 +172,7 @@ export default function ExpensesPage() {
   const uploadReceipt = async (file: File): Promise<string | null> => {
     if (!user || !storage) return null;
     setIsUploading(true);
-    const storageRef = ref(storage, `receipts/${user.uid}/${Date.now()}_${file.name}`);
+    const storageRef = ref(storage, `receipts/${company.id}/${Date.now()}_${file.name}`);
     try {
       await uploadBytes(storageRef, file);
       const downloadURL = await getDownloadURL(storageRef);
@@ -186,7 +189,7 @@ export default function ExpensesPage() {
 
   const handleAddExpense = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!expensesCollectionRef || !user) return;
+    if (!company || !firestore) return;
 
     const formData = new FormData(event.currentTarget);
     const receiptFile = formData.get("receipt") as File | null;
@@ -203,10 +206,10 @@ export default function ExpensesPage() {
       category: formData.get("category") as Expense['category'],
       amount: parseFloat(formData.get("amount") as string),
       date: new Date(formData.get("date") as string).toISOString(),
-      companyId: user.uid,
+      companyId: company.id,
       ...(receiptUrl && { receiptUrl }),
     };
-    addDocumentNonBlocking(expensesCollectionRef, newExpense);
+    addDocumentNonBlocking(collection(firestore, "expenses"), newExpense);
     toast({ title: "Dépense ajoutée", description: "La nouvelle dépense a été enregistrée." });
     setIsAddDialogOpen(false);
     (event.target as HTMLFormElement).reset();
@@ -234,7 +237,7 @@ export default function ExpensesPage() {
       ...(receiptUrl && { receiptUrl }),
     };
 
-    const expenseRef = doc(firestore, `companies/${user.uid}/expenses`, selectedExpense.id);
+    const expenseRef = doc(firestore, "expenses", selectedExpense.id);
     updateDocumentNonBlocking(expenseRef, updatedExpense);
     toast({ title: "Dépense modifiée", description: "Les détails de la dépense ont été mis à jour." });
     setIsEditDialogOpen(false);
@@ -242,8 +245,8 @@ export default function ExpensesPage() {
   };
 
   const handleDeleteExpense = () => {
-    if (!selectedExpense || !user || !firestore) return;
-    const expenseRef = doc(firestore, `companies/${user.uid}/expenses`, selectedExpense.id);
+    if (!selectedExpense || !firestore) return;
+    const expenseRef = doc(firestore, "expenses", selectedExpense.id);
     deleteDocumentNonBlocking(expenseRef);
     toast({ title: "Dépense supprimée", description: "La dépense a été supprimée avec succès." });
     setSelectedExpense(null);

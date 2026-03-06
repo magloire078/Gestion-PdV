@@ -16,6 +16,8 @@ import {
   ShoppingCart,
   Sun,
   Users,
+  Warehouse,
+  History,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -32,19 +34,21 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Logo } from "@/components/logo";
 import { useState, useEffect } from "react";
-import { useAuth, useUser, useFirestore, useDoc, useMemoFirebase } from "@/firebase";
-import { doc } from "firebase/firestore";
+import { useAuth, useUser, useFirebase, useMemoFirebase } from "@/firebase";
+import { doc, setDoc } from "firebase/firestore";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useProfile } from "@/hooks/use-profile";
 import type { Company } from "@/lib/types";
 
 const navItems = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de bord" },
-  { href: "/dashboard/invoices", icon: FileText, label: "Factures" },
-  { href: "/dashboard/clients", icon: Users, label: "Clients" },
-  { href: "/dashboard/expenses", icon: DollarSign, label: "Dépenses" },
-  { href: "/dashboard/products", icon: Package, label: "Produits POS" },
-  { href: "/dashboard/reports", icon: LineChart, label: "Rapports" },
-  { href: "/pos", icon: ShoppingCart, label: "Caisse" },
+  { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de Bord" },
+  { href: "/pos", icon: ShoppingCart, label: "Point de Vente (POS)" },
+  { href: "/dashboard/products", icon: Package, label: "Produits" },
+  { href: "/dashboard/stocks", icon: Warehouse, label: "Gestion des Stocks" },
+  { href: "/dashboard/movements", icon: History, label: "Mouvements" },
+  { href: "/dashboard/employees", icon: Users, label: "Employés", roles: ['owner', 'superadmin'] },
+  { href: "/dashboard/reports", icon: LineChart, label: "Rapports & Stats" },
+  { href: "/admin", icon: Settings, label: "Admin Système", roles: ['superadmin'] },
   { href: "/dashboard/settings", icon: Settings, label: "Paramètres" },
 ];
 
@@ -101,9 +105,13 @@ function UserNav() {
   );
 }
 
-function MobileNav({ logoUrl }: { logoUrl?: string | null }) {
+function MobileNav({ logoUrl, role }: { logoUrl?: string | null, role?: string }) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+
+  const filteredNavItems = navItems.filter(item =>
+    !item.roles || (role && item.roles.includes(role))
+  );
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -122,14 +130,14 @@ function MobileNav({ logoUrl }: { logoUrl?: string | null }) {
           >
             <Logo logoUrl={logoUrl} />
           </Link>
-          {navItems.map((item) => (
+          {filteredNavItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               onClick={() => setIsOpen(false)}
               className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all ${pathname === item.href
-                  ? "text-primary bg-muted"
-                  : "text-muted-foreground hover:text-primary"
+                ? "text-primary bg-muted"
+                : "text-muted-foreground hover:text-primary"
                 }`}
             >
               <item.icon className="h-4 w-4" />
@@ -144,22 +152,50 @@ function MobileNav({ logoUrl }: { logoUrl?: string | null }) {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, isUserLoading } = useUser();
+  const { user, isUserLoading: isAuthLoading } = useUser();
   const router = useRouter();
-  const firestore = useFirestore();
+  const { firestore } = useFirebase();
+  const { profile, company, isLoading: isProfileLoading } = useProfile();
 
-  const companyRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return doc(firestore, "companies", user.uid);
-  }, [firestore, user]);
+  const isUserLoading = isAuthLoading || isProfileLoading;
 
-  const { data: company, isLoading: isCompanyLoading } = useDoc<Company>(companyRef);
+  // Auto-create/fix profile and company logic
+  useEffect(() => {
+    if (!user || !firestore || isUserLoading) return;
+
+    // Only if we are sure profile and company are missing after loading
+    if (!profile && !isProfileLoading) {
+      console.log("Creating default profile and company for user:", user.uid);
+      const userRef = doc(firestore, 'users', user.uid);
+      setDoc(userRef, {
+        email: user.email,
+        displayName: user.displayName,
+        role: 'owner',
+        companyId: user.uid,
+        createdAt: new Date().toISOString()
+      }, { merge: true });
+
+      const companyRef = doc(firestore, 'companies', user.uid);
+      setDoc(companyRef, {
+        name: user.displayName ?? user.email ?? 'Mon Entreprise',
+        ownerId: user.uid,
+        email: user.email ?? '',
+        creationDate: new Date().toISOString(),
+        subscriptionStatus: 'active',
+        subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      }, { merge: true });
+    }
+  }, [user, firestore, profile, isUserLoading, isProfileLoading]);
 
   useEffect(() => {
-    if (!isUserLoading && !user) {
+    if (!isAuthLoading && !user) {
       router.push("/auth/signin");
     }
-  }, [user, isUserLoading, router]);
+  }, [user, isAuthLoading, router]);
+
+  const filteredNavItems = navItems.filter(item =>
+    !item.roles || (profile?.role && item.roles.includes(profile.role))
+  );
 
   if (isUserLoading || !user) {
     return (
@@ -176,7 +212,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex h-auto flex-col items-center border-b px-4 py-4 lg:h-auto lg:px-6">
             <Link href="/dashboard" className="flex flex-col items-center gap-2 font-semibold">
               <Logo logoUrl={company?.logoUrl} />
-              {isCompanyLoading ? (
+              {isUserLoading ? (
                 <Skeleton className="h-4 w-32 mt-1" />
               ) : (
                 company && <span className="text-xs text-muted-foreground">{company.name}</span>
@@ -185,13 +221,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           <div className="flex-1">
             <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-              {navItems.map((item) => (
+              {filteredNavItems.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all ${pathname === item.href
-                      ? "text-primary bg-muted"
-                      : "text-muted-foreground hover:text-primary"
+                    ? "text-primary bg-muted"
+                    : "text-muted-foreground hover:text-primary"
                     }`}
                 >
                   <item.icon className="h-4 w-4" />
@@ -204,7 +240,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
       <div className="flex flex-col">
         <header className="flex h-14 items-center gap-4 border-b bg-card px-4 lg:h-[60px] lg:px-6">
-          <MobileNav logoUrl={company?.logoUrl} />
+          <MobileNav logoUrl={company?.logoUrl} role={profile?.role} />
           <div className="w-full flex-1" />
           <UserNav />
         </header>

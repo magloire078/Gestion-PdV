@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
+import Link from 'next/link';
 import { usePOSStore } from '@/hooks/use-pos-store';
+import { useProfile } from '@/hooks/use-profile';
 import { DataService } from '@/lib/data-service';
 import { SyncEngine } from '@/lib/sync-engine';
 import { Product } from '@/lib/db';
@@ -23,19 +25,22 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import Image from 'next/image';
 
-export default function POSPage() {
+function POSPageContent() {
+    const { company, isLoading: isProfileLoading } = useProfile();
     const [products, setProducts] = useState<Product[]>([]);
     const [search, setSearch] = useState('');
     const [isOnline, setIsOnline] = useState(true);
     const { cart, addItem, removeItem, updateQuantity, total, clearCart } = usePOSStore();
 
     useEffect(() => {
+        if (isProfileLoading || !company) return;
+
         // Start Sync Engine
-        SyncEngine.start();
+        SyncEngine.start(company.id);
 
         // Fetch products
         const fetchProducts = async () => {
-            const data = await DataService.getProducts();
+            const data = await DataService.getProducts(company.id);
             setProducts(data);
         };
         fetchProducts();
@@ -50,17 +55,57 @@ export default function POSPage() {
             window.removeEventListener('online', handleStatusChange);
             window.removeEventListener('offline', handleStatusChange);
         };
-    }, []);
+    }, [company, isProfileLoading]);
+
+    // Barcode Scanning Logic
+    useEffect(() => {
+        let scannerBuffer = "";
+        let lastKeyTime = Date.now();
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // If user is typing in an input, don't trigger scanner logic
+            if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            const currentTime = Date.now();
+
+            // Scanners usually send keys very fast (under 30ms-50ms)
+            if (currentTime - lastKeyTime > 100) {
+                scannerBuffer = "";
+            }
+
+            if (e.key === 'Enter') {
+                if (scannerBuffer.length > 2) {
+                    const found = products.find(p => p.barcode === scannerBuffer);
+                    if (found) {
+                        addItem(found);
+                        // Optional: play a sound or show a small toast
+                    }
+                    scannerBuffer = "";
+                }
+            } else if (e.key.length === 1) {
+                scannerBuffer += e.key;
+            }
+
+            lastKeyTime = currentTime;
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [products, addItem]);
 
     const filteredProducts = products.filter(p =>
         p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.category.toLowerCase().includes(search.toLowerCase())
+        p.category.toLowerCase().includes(search.toLowerCase()) ||
+        (p.barcode && p.barcode.includes(search))
     );
 
     const handleCheckout = async () => {
-        if (cart.length === 0) return;
+        if (cart.length === 0 || !company) return;
 
         const sale = {
+            companyId: company.id,
             items: cart.map(item => ({
                 productId: item.id,
                 name: item.name,
@@ -84,9 +129,11 @@ export default function POSPage() {
         <div className="flex h-screen bg-neutral-950 text-white overflow-hidden font-sans">
             {/* Sidebar Navigation */}
             <aside className="w-20 border-r border-neutral-800 flex flex-col items-center py-6 gap-8 bg-neutral-900/50 backdrop-blur-xl">
-                <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                    <LayoutGrid className="text-white" size={24} />
-                </div>
+                <Link href="/dashboard" title="Retour au Tableau de Bord">
+                    <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20 cursor-pointer hover:bg-indigo-700 transition-colors">
+                        <LayoutGrid className="text-white" size={24} />
+                    </div>
+                </Link>
                 <nav className="flex flex-col gap-6">
                     <Button variant="ghost" className="w-12 h-12 rounded-xl p-0 hover:bg-neutral-800">
                         <Package size={24} className="text-neutral-400" />
@@ -107,7 +154,7 @@ export default function POSPage() {
                         )}
                     </motion.div>
                     <span className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest leading-none">
-                        {isOnline ? 'Online' : 'Offline'}
+                        {isOnline ? 'En ligne' : 'Hors ligne'}
                     </span>
                 </div>
             </aside>
@@ -150,8 +197,8 @@ export default function POSPage() {
                                 >
                                     <Card className="bg-neutral-900 border-neutral-800 overflow-hidden cursor-pointer group hover:border-indigo-500/50 transition-colors">
                                         <div className="aspect-square relative bg-neutral-800">
-                                            {product.image ? (
-                                                <Image src={product.image} alt={product.name} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
+                                            {product.imageUrl ? (
+                                                <Image src={product.imageUrl} alt={product.name} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized />
                                             ) : (
                                                 <div className="w-full h-full flex items-center justify-center">
                                                     <Package className="text-neutral-700" size={48} />
@@ -269,5 +316,17 @@ export default function POSPage() {
         }
       `}</style>
         </div>
+    );
+}
+
+export default function POSPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex items-center justify-center min-h-screen bg-neutral-950 text-white">
+                <div className="loader">Chargement du Point de Vente...</div>
+            </div>
+        }>
+            <POSPageContent />
+        </Suspense>
     );
 }

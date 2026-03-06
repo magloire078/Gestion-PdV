@@ -39,31 +39,32 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-  } from "@/components/ui/alert-dialog"
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-  } from "@/components/ui/select";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoreHorizontal, PlusCircle, ArrowUpDown, Eye, FileText } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useUser, useFirestore, useCollection, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from "@/firebase";
-import { collection, doc } from "firebase/firestore";
+import { collection, doc, query, where } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useProfile } from "@/hooks/use-profile";
 import type { Invoice, Client } from "@/lib/types";
 
 type SortKey = keyof Omit<Invoice, 'id' | 'companyId' | 'clientId'>;
@@ -80,55 +81,55 @@ function getStatusBadgeVariant(status: Invoice["status"]) {
 }
 
 function InvoiceActions({ invoice, openEditDialog, setSelectedInvoice, handleMarkAsPaid, handleDeleteInvoice }: {
-    invoice: Invoice;
-    openEditDialog: (invoice: Invoice) => void;
-    setSelectedInvoice: (invoice: Invoice | null) => void;
-    handleMarkAsPaid: (invoiceId: string) => void;
-    handleDeleteInvoice: () => void;
+  invoice: Invoice;
+  openEditDialog: (invoice: Invoice) => void;
+  setSelectedInvoice: (invoice: Invoice | null) => void;
+  handleMarkAsPaid: (invoiceId: string) => void;
+  handleDeleteInvoice: () => void;
 }) {
-    return (
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <Button aria-haspopup="true" size="icon" variant="ghost">
-                    <MoreHorizontal className="h-4 w-4" />
-                    <span className="sr-only">Toggle menu</span>
-                </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <Link href={`/dashboard/invoices/${invoice.id}`}>
-                    <DropdownMenuItem>
-                        <Eye className="mr-2 h-4 w-4" />
-                        Voir
-                    </DropdownMenuItem>
-                </Link>
-                {invoice.status !== 'Payée' && (
-                    <DropdownMenuItem onClick={() => handleMarkAsPaid(invoice.id)}>
-                        Marquer comme payée
-                    </DropdownMenuItem>
-                )}
-                {invoice.status !== 'Payée' && <DropdownMenuSeparator />}
-                <DropdownMenuItem onClick={() => openEditDialog(invoice)}>Modifier</DropdownMenuItem>
-                <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                        <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setSelectedInvoice(invoice); }}>Supprimer</DropdownMenuItem>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Êtes-vous sûr?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                Cette action est irréversible. La facture sera définitivement supprimée.
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => setSelectedInvoice(null)}>Annuler</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteInvoice()}>Supprimer</AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-            </DropdownMenuContent>
-        </DropdownMenu>
-    );
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button aria-haspopup="true" size="icon" variant="ghost">
+          <MoreHorizontal className="h-4 w-4" />
+          <span className="sr-only">Toggle menu</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <Link href={`/dashboard/invoices/${invoice.id}`}>
+          <DropdownMenuItem>
+            <Eye className="mr-2 h-4 w-4" />
+            Voir
+          </DropdownMenuItem>
+        </Link>
+        {invoice.status !== 'Payée' && (
+          <DropdownMenuItem onClick={() => handleMarkAsPaid(invoice.id)}>
+            Marquer comme payée
+          </DropdownMenuItem>
+        )}
+        {invoice.status !== 'Payée' && <DropdownMenuSeparator />}
+        <DropdownMenuItem onClick={() => openEditDialog(invoice)}>Modifier</DropdownMenuItem>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setSelectedInvoice(invoice); }}>Supprimer</DropdownMenuItem>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Êtes-vous sûr?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Cette action est irréversible. La facture sera définitivement supprimée.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setSelectedInvoice(null)}>Annuler</AlertDialogCancel>
+              <AlertDialogAction onClick={() => handleDeleteInvoice()}>Supprimer</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 export default function InvoicesPage() {
@@ -137,28 +138,29 @@ export default function InvoicesPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'ascending' | 'descending' }>({ key: 'issueDate', direction: 'descending' });
   const { user } = useUser();
+  const { company, isLoading: isProfileLoading } = useProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
 
-  const invoicesCollectionRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return collection(firestore, `companies/${user.uid}/invoices`);
-  }, [firestore, user]);
+  const invoicesQuery = useMemoFirebase(() => {
+    if (!company?.id || !firestore) return null;
+    return query(collection(firestore, "invoices"), where("companyId", "==", company.id));
+  }, [firestore, company?.id]);
 
-  const clientsCollectionRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return collection(firestore, `companies/${user.uid}/clients`);
-  }, [firestore, user]);
+  const clientsQuery = useMemoFirebase(() => {
+    if (!company?.id || !firestore) return null;
+    return query(collection(firestore, "clients"), where("companyId", "==", company.id));
+  }, [firestore, company?.id]);
 
-  const { data: invoices, isLoading: isLoadingInvoices } = useCollection<Omit<Invoice, 'id'>>(invoicesCollectionRef);
-  const { data: clients, isLoading: isLoadingClients } = useCollection<Omit<Client, 'id'>>(clientsCollectionRef);
-  
+  const { data: invoices, isLoading: isLoadingInvoices } = useCollection<Invoice>(invoicesQuery);
+  const { data: clients, isLoading: isLoadingClients } = useCollection<Client>(clientsQuery);
+
   const processedInvoices = useMemo(() => {
     return invoices?.map(invoice => {
-        if (invoice.status === 'En attente' && new Date(invoice.dueDate) < new Date()) {
-            return { ...invoice, status: 'En retard' as const };
-        }
-        return invoice;
+      if (invoice.status === 'En attente' && new Date(invoice.dueDate) < new Date()) {
+        return { ...invoice, status: 'En retard' as const };
+      }
+      return invoice;
     }) ?? [];
   }, [invoices]);
 
@@ -197,15 +199,15 @@ export default function InvoicesPage() {
 
   const handleAddInvoice = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!invoicesCollectionRef || !clients || !user) return;
+    if (!company || !clients || !firestore) return;
 
     const formData = new FormData(event.currentTarget);
     const clientId = formData.get("clientId") as string;
     const client = clients.find(c => c.id === clientId);
 
     if (!client) {
-        toast({ variant: "destructive", title: "Client non trouvé" });
-        return;
+      toast({ variant: "destructive", title: "Client non trouvé" });
+      return;
     }
 
     const newInvoice = {
@@ -216,9 +218,9 @@ export default function InvoicesPage() {
       status: "En attente" as const,
       issueDate: new Date().toISOString(),
       dueDate: new Date(formData.get("dueDate") as string).toISOString(),
-      companyId: user.uid,
+      companyId: company.id,
     };
-    addDocumentNonBlocking(invoicesCollectionRef, newInvoice);
+    addDocumentNonBlocking(collection(firestore, "invoices"), newInvoice);
     toast({ title: "Facture créée", description: `La facture pour ${newInvoice.clientName} a été ajoutée.` });
     setIsAddDialogOpen(false);
     (event.target as HTMLFormElement).reset();
@@ -226,24 +228,24 @@ export default function InvoicesPage() {
 
   const handleUpdateInvoice = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedInvoice || !user || !clients || !firestore) return;
+    if (!selectedInvoice || !company || !clients || !firestore) return;
 
     const formData = new FormData(event.currentTarget);
     const clientId = formData.get("clientId") as string;
     const client = clients.find(c => c.id === clientId);
     if (!client) {
-        toast({ variant: "destructive", title: "Client non trouvé" });
-        return;
+      toast({ variant: "destructive", title: "Client non trouvé" });
+      return;
     }
-    
+
     const updatedInvoice = {
       clientId: client.id,
       clientName: client.name,
       amount: parseFloat(formData.get("amount") as string),
       dueDate: new Date(formData.get("dueDate") as string).toISOString(),
     };
-    
-    const invoiceRef = doc(firestore, `companies/${user.uid}/invoices`, selectedInvoice.id);
+
+    const invoiceRef = doc(firestore, "invoices", selectedInvoice.id);
     updateDocumentNonBlocking(invoiceRef, updatedInvoice);
     toast({ title: "Facture modifiée", description: "Les détails de la facture ont été mis à jour." });
     setIsEditDialogOpen(false);
@@ -251,16 +253,16 @@ export default function InvoicesPage() {
   };
 
   const handleDeleteInvoice = () => {
-    if (!selectedInvoice || !user || !firestore) return;
-    const invoiceRef = doc(firestore, `companies/${user.uid}/invoices`, selectedInvoice.id);
+    if (!selectedInvoice || !firestore) return;
+    const invoiceRef = doc(firestore, "invoices", selectedInvoice.id);
     deleteDocumentNonBlocking(invoiceRef);
     toast({ title: "Facture supprimée", description: "La facture a été supprimée avec succès." });
     setSelectedInvoice(null);
   }
 
   const handleMarkAsPaid = (invoiceId: string) => {
-    if (!user || !firestore) return;
-    const invoiceRef = doc(firestore, `companies/${user.uid}/invoices`, invoiceId);
+    if (!firestore) return;
+    const invoiceRef = doc(firestore, "invoices", invoiceId);
     updateDocumentNonBlocking(invoiceRef, { status: "Payée" });
     toast({ title: "Statut mis à jour", description: "La facture a été marquée comme payée." });
   };
@@ -270,26 +272,26 @@ export default function InvoicesPage() {
     setIsEditDialogOpen(true);
   }
 
-  const isLoading = isLoadingInvoices || isLoadingClients;
+  const isLoading = isProfileLoading || isLoadingInvoices || isLoadingClients;
 
   const renderEmptyState = () => (
     <div className="text-center py-12">
-        <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
-        <h3 className="mt-4 text-lg font-semibold">Aucune facture pour le moment</h3>
-        <p className="mt-2 text-sm text-muted-foreground">Commencez par créer votre première facture.</p>
-        <div className="mt-6">
-            <Button onClick={() => setIsAddDialogOpen(true)} disabled={isLoadingClients || !clients || clients.length === 0}>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Créer une facture
-            </Button>
-            {(!clients || clients.length === 0) && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                    Vous devez d'abord <Link href="/dashboard/clients" className="underline font-medium">ajouter un client</Link>.
-                </p>
-            )}
-        </div>
+      <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
+      <h3 className="mt-4 text-lg font-semibold">Aucune facture pour le moment</h3>
+      <p className="mt-2 text-sm text-muted-foreground">Commencez par créer votre première facture.</p>
+      <div className="mt-6">
+        <Button onClick={() => setIsAddDialogOpen(true)} disabled={isLoadingClients || !clients || clients.length === 0}>
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Créer une facture
+        </Button>
+        {(!clients || clients.length === 0) && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Vous devez d'abord <Link href="/dashboard/clients" className="underline font-medium">ajouter un client</Link>.
+          </p>
+        )}
+      </div>
     </div>
-);
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -306,9 +308,9 @@ export default function InvoicesPage() {
             <DialogHeader>
               <DialogTitle>Nouvelle facture</DialogTitle>
               <DialogDescription>
-                {(!clients || clients.length === 0) 
-                    ? "Veuillez d'abord ajouter un client dans l'onglet 'Clients'."
-                    : "Remplissez les détails de la nouvelle facture."
+                {(!clients || clients.length === 0)
+                  ? "Veuillez d'abord ajouter un client dans l'onglet 'Clients'."
+                  : "Remplissez les détails de la nouvelle facture."
                 }
               </DialogDescription>
             </DialogHeader>
@@ -360,132 +362,132 @@ export default function InvoicesPage() {
       {/* Mobile View */}
       <div className="grid gap-4 md:hidden">
         {isLoading && [...Array(3)].map((_, i) => (
-            <Card key={i}><CardHeader><Skeleton className="h-6 w-3/5" /></CardHeader><CardContent><div className="space-y-2"><Skeleton className="h-4 w-4/5" /><Skeleton className="h-4 w-3/5" /></div></CardContent></Card>
+          <Card key={i}><CardHeader><Skeleton className="h-6 w-3/5" /></CardHeader><CardContent><div className="space-y-2"><Skeleton className="h-4 w-4/5" /><Skeleton className="h-4 w-3/5" /></div></CardContent></Card>
         ))}
         {!isLoading && sortedInvoices.length > 0 ? sortedInvoices.map((invoice) => (
-            <Card key={invoice.id}>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <div>
-                        <CardTitle className="text-base font-bold">
-                           <Link href={`/dashboard/invoices/${invoice.id}`} className="hover:underline">
-                                {invoice.invoiceNumber}
-                            </Link>
-                        </CardTitle>
-                        <CardDescription>{invoice.clientName}</CardDescription>
-                    </div>
-                    <div className="text-right font-bold text-lg">{formatCurrency(invoice.amount)}</div>
-                </CardHeader>
-                <CardContent className="flex items-center justify-between">
-                    <Badge variant={getStatusBadgeVariant(invoice.status)} className={invoice.status === 'Payée' ? 'bg-primary text-primary-foreground' : ''}>
-                        {invoice.status}
-                    </Badge>
-                     <p className="text-xs text-muted-foreground">Échéance: {new Date(invoice.dueDate).toLocaleDateString('fr-FR')}</p>
-                </CardContent>
-                 <CardFooter className="flex justify-end border-t pt-4">
-                    <InvoiceActions 
-                        invoice={invoice} 
-                        openEditDialog={openEditDialog} 
-                        setSelectedInvoice={setSelectedInvoice}
-                        handleMarkAsPaid={handleMarkAsPaid}
-                        handleDeleteInvoice={handleDeleteInvoice}
-                    />
-                </CardFooter>
-            </Card>
-        )) : null }
+          <Card key={invoice.id}>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <CardTitle className="text-base font-bold">
+                  <Link href={`/dashboard/invoices/${invoice.id}`} className="hover:underline">
+                    {invoice.invoiceNumber}
+                  </Link>
+                </CardTitle>
+                <CardDescription>{invoice.clientName}</CardDescription>
+              </div>
+              <div className="text-right font-bold text-lg">{formatCurrency(invoice.amount)}</div>
+            </CardHeader>
+            <CardContent className="flex items-center justify-between">
+              <Badge variant={getStatusBadgeVariant(invoice.status)} className={invoice.status === 'Payée' ? 'bg-primary text-primary-foreground' : ''}>
+                {invoice.status}
+              </Badge>
+              <p className="text-xs text-muted-foreground">Échéance: {new Date(invoice.dueDate).toLocaleDateString('fr-FR')}</p>
+            </CardContent>
+            <CardFooter className="flex justify-end border-t pt-4">
+              <InvoiceActions
+                invoice={invoice}
+                openEditDialog={openEditDialog}
+                setSelectedInvoice={setSelectedInvoice}
+                handleMarkAsPaid={handleMarkAsPaid}
+                handleDeleteInvoice={handleDeleteInvoice}
+              />
+            </CardFooter>
+          </Card>
+        )) : null}
       </div>
       {!isLoading && sortedInvoices.length === 0 && (
-          <div className="md:hidden">{renderEmptyState()}</div>
+        <div className="md:hidden">{renderEmptyState()}</div>
       )}
 
 
       {/* Desktop View */}
       <div className="hidden md:block border rounded-lg">
         {isLoading || sortedInvoices.length > 0 ? (
-            <Table>
+          <Table>
             <TableHeader>
-                <TableRow>
-                    <TableHead>
-                        <Button variant="ghost" onClick={() => requestSort('invoiceNumber')} className="px-0">
-                            Numéro {getSortIcon('invoiceNumber')}
-                        </Button>
-                    </TableHead>
-                    <TableHead>
-                        <Button variant="ghost" onClick={() => requestSort('clientName')} className="px-0">
-                            Client {getSortIcon('clientName')}
-                        </Button>
-                    </TableHead>
-                    <TableHead>
-                        <Button variant="ghost" onClick={() => requestSort('status')} className="px-0">
-                            Statut {getSortIcon('status')}
-                        </Button>
-                    </TableHead>
-                    <TableHead className="text-right">
-                        <Button variant="ghost" onClick={() => requestSort('amount')} className="px-0">
-                            Montant {getSortIcon('amount')}
-                        </Button>
-                    </TableHead>
+              <TableRow>
+                <TableHead>
+                  <Button variant="ghost" onClick={() => requestSort('invoiceNumber')} className="px-0">
+                    Numéro {getSortIcon('invoiceNumber')}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button variant="ghost" onClick={() => requestSort('clientName')} className="px-0">
+                    Client {getSortIcon('clientName')}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button variant="ghost" onClick={() => requestSort('status')} className="px-0">
+                    Statut {getSortIcon('status')}
+                  </Button>
+                </TableHead>
+                <TableHead className="text-right">
+                  <Button variant="ghost" onClick={() => requestSort('amount')} className="px-0">
+                    Montant {getSortIcon('amount')}
+                  </Button>
+                </TableHead>
                 <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
+              </TableRow>
             </TableHeader>
             <TableBody>
-                {isLoading &&
+              {isLoading &&
                 [...Array(5)].map((_, i) => (
-                    <TableRow key={i}>
+                  <TableRow key={i}>
                     <TableCell>
-                        <Skeleton className="h-4 w-20" />
+                      <Skeleton className="h-4 w-20" />
                     </TableCell>
                     <TableCell>
-                        <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-4 w-32" />
                     </TableCell>
                     <TableCell>
-                        <Skeleton className="h-6 w-20 rounded-full" />
+                      <Skeleton className="h-6 w-20 rounded-full" />
                     </TableCell>
                     <TableCell className="text-right">
-                        <Skeleton className="h-4 w-24 ml-auto" />
+                      <Skeleton className="h-4 w-24 ml-auto" />
                     </TableCell>
                     <TableCell className="text-right">
-                        <Skeleton className="h-8 w-8 ml-auto" />
+                      <Skeleton className="h-8 w-8 ml-auto" />
                     </TableCell>
-                    </TableRow>
+                  </TableRow>
                 ))}
-                {!isLoading && sortedInvoices?.map((invoice) => (
+              {!isLoading && sortedInvoices?.map((invoice) => (
                 <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">
-                        <Link href={`/dashboard/invoices/${invoice.id}`} className="hover:underline">
-                            {invoice.invoiceNumber}
-                        </Link>
-                    </TableCell>
-                    <TableCell>{invoice.clientName}</TableCell>
-                    <TableCell>
+                  <TableCell className="font-medium">
+                    <Link href={`/dashboard/invoices/${invoice.id}`} className="hover:underline">
+                      {invoice.invoiceNumber}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{invoice.clientName}</TableCell>
+                  <TableCell>
                     <Badge variant={getStatusBadgeVariant(invoice.status)} className={invoice.status === 'Payée' ? 'bg-primary text-primary-foreground' : ''}>
-                        {invoice.status}
+                      {invoice.status}
                     </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
+                  </TableCell>
+                  <TableCell className="text-right">
                     {formatCurrency(invoice.amount)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                    <InvoiceActions 
-                        invoice={invoice} 
-                        openEditDialog={openEditDialog} 
-                        setSelectedInvoice={setSelectedInvoice}
-                        handleMarkAsPaid={handleMarkAsPaid}
-                        handleDeleteInvoice={handleDeleteInvoice}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <InvoiceActions
+                      invoice={invoice}
+                      openEditDialog={openEditDialog}
+                      setSelectedInvoice={setSelectedInvoice}
+                      handleMarkAsPaid={handleMarkAsPaid}
+                      handleDeleteInvoice={handleDeleteInvoice}
                     />
-                    </TableCell>
+                  </TableCell>
                 </TableRow>
-                ))}
+              ))}
             </TableBody>
-            </Table>
+          </Table>
         ) : (
-            renderEmptyState()
+          renderEmptyState()
         )}
       </div>
-      
+
       {selectedInvoice && (
         <Dialog open={isEditDialogOpen} onOpenChange={(isOpen) => {
-            if (!isOpen) setSelectedInvoice(null);
-            setIsEditDialogOpen(isOpen);
+          if (!isOpen) setSelectedInvoice(null);
+          setIsEditDialogOpen(isOpen);
         }}>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
@@ -503,9 +505,9 @@ export default function InvoicesPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        {clients?.map(client => (
-                            <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
-                        ))}
+                      {clients?.map(client => (
+                        <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

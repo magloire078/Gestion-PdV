@@ -11,13 +11,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-  } from "@/components/ui/card";
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -36,174 +36,177 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-  } from "@/components/ui/alert-dialog"
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoreHorizontal, PlusCircle, ArrowUpDown, Users } from "lucide-react";
-import { useUser, useFirestore, useCollection, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from "@/firebase";
-import { collection, doc } from "firebase/firestore";
+import { useUser, useFirestore, useCollection, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useFirebase } from "@/firebase";
+import { collection, doc, query, where } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useProfile } from "@/hooks/use-profile";
 import type { Client } from "@/lib/types";
 
 type SortKey = keyof Omit<Client, 'id'>;
 
 function ClientActions({ client, openEditDialog, setSelectedClient, handleDeleteClient }: {
-    client: Client;
-    openEditDialog: (client: Client) => void;
-    setSelectedClient: (client: Client | null) => void;
-    handleDeleteClient: () => void;
+  client: Client;
+  openEditDialog: (client: Client) => void;
+  setSelectedClient: (client: Client | null) => void;
+  handleDeleteClient: () => void;
 }) {
-    return (
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <Button aria-haspopup="true" size="icon" variant="ghost">
-                    <MoreHorizontal className="h-4 w-4" />
-                    <span className="sr-only">Toggle menu</span>
-                </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => openEditDialog(client)}>Modifier</DropdownMenuItem>
-                <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                        <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setSelectedClient(client); }}>Supprimer</DropdownMenuItem>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Êtes-vous sûr?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                            Cette action est irréversible. Le client sera définitivement supprimé.
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => setSelectedClient(null)}>Annuler</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteClient()}>Supprimer</AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-            </DropdownMenuContent>
-        </DropdownMenu>
-    );
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button aria-haspopup="true" size="icon" variant="ghost">
+          <MoreHorizontal className="h-4 w-4" />
+          <span className="sr-only">Toggle menu</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuItem onClick={() => openEditDialog(client)}>Modifier</DropdownMenuItem>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setSelectedClient(client); }}>Supprimer</DropdownMenuItem>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Êtes-vous sûr?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Cette action est irréversible. Le client sera définitivement supprimé.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setSelectedClient(null)}>Annuler</AlertDialogCancel>
+              <AlertDialogAction onClick={() => handleDeleteClient()}>Supprimer</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 export default function ClientsPage() {
-    const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-    const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'ascending' | 'descending' }>({ key: 'name', direction: 'ascending' });
-    const { user } = useUser();
-    const firestore = useFirestore();
-    const { toast } = useToast();
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'ascending' | 'descending' }>({ key: 'name', direction: 'ascending' });
+  const { user } = useUser();
+  const { company, isLoading: isProfileLoading } = useProfile();
+  const firestore = useFirestore();
+  const { toast } = useToast();
 
-    const clientsCollectionRef = useMemoFirebase(() => {
-        if (!user || !firestore) return null;
-        return collection(firestore, `companies/${user.uid}/clients`);
-    }, [firestore, user]);
+  const clientsQuery = useMemoFirebase(() => {
+    if (!company?.id || !firestore) return null;
+    return query(collection(firestore, "clients"), where("companyId", "==", company.id));
+  }, [firestore, company?.id]);
 
-    const { data: clients, isLoading } = useCollection<Omit<Client, 'id'>>(clientsCollectionRef);
+  const { data: clients, isLoading: isCollectionLoading } = useCollection<Client>(clientsQuery);
+  const isLoading = isProfileLoading || isCollectionLoading;
 
-    const sortedClients = useMemo(() => {
-        let sortableItems = clients ? [...clients] : [];
-        if (sortConfig.key) {
-          sortableItems.sort((a, b) => {
-            const aValue = a[sortConfig.key] || '';
-            const bValue = b[sortConfig.key] || '';
-            if (aValue < bValue) {
-              return sortConfig.direction === 'ascending' ? -1 : 1;
-            }
-            if (aValue > bValue) {
-              return sortConfig.direction === 'ascending' ? 1 : -1;
-            }
-            return 0;
-          });
+  const sortedClients = useMemo(() => {
+    let sortableItems = clients ? [...clients] : [];
+    if (sortConfig.key) {
+      sortableItems.sort((a, b) => {
+        const aValue = a[sortConfig.key] || '';
+        const bValue = b[sortConfig.key] || '';
+        if (aValue < bValue) {
+          return sortConfig.direction === 'ascending' ? -1 : 1;
         }
-        return sortableItems;
-      }, [clients, sortConfig]);
-
-    const requestSort = (key: SortKey) => {
-        let direction: 'ascending' | 'descending' = 'ascending';
-        if (sortConfig.key === key && sortConfig.direction === 'ascending') {
-            direction = 'descending';
+        if (aValue > bValue) {
+          return sortConfig.direction === 'ascending' ? 1 : -1;
         }
-        setSortConfig({ key, direction });
-    };
-
-    const getSortIcon = (key: SortKey) => {
-        if (sortConfig.key !== key) {
-            return <ArrowUpDown className="ml-2 h-4 w-4" />;
-        }
-        return sortConfig.direction === 'ascending' ? <ArrowUpDown className="ml-2 h-4 w-4" /> : <ArrowUpDown className="ml-2 h-4 w-4" />;
-    };
-
-    const handleAddClient = (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        if (!clientsCollectionRef || !user) return;
-
-        const formData = new FormData(event.currentTarget);
-        const newClient = {
-            name: formData.get("name") as string,
-            email: formData.get("email") as string,
-            companyId: user.uid,
-        };
-        addDocumentNonBlocking(clientsCollectionRef, newClient);
-        toast({ title: "Client ajouté", description: "Le nouveau client a été enregistré." });
-        setIsAddDialogOpen(false);
-        (event.target as HTMLFormElement).reset();
-    };
-
-    const handleUpdateClient = (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        if (!selectedClient || !user || !firestore) return;
-    
-        const formData = new FormData(event.currentTarget);
-        const updatedClient = {
-          name: formData.get("name") as string,
-          email: formData.get("email") as string,
-        };
-        
-        const clientRef = doc(firestore, `companies/${user.uid}/clients`, selectedClient.id);
-        updateDocumentNonBlocking(clientRef, updatedClient);
-        toast({ title: "Client modifié", description: "Les détails du client ont été mis à jour." });
-        setIsEditDialogOpen(false);
-        setSelectedClient(null);
-    };
-    
-    const handleDeleteClient = () => {
-        if (!selectedClient || !user || !firestore) return;
-        const clientRef = doc(firestore, `companies/${user.uid}/clients`, selectedClient.id);
-        deleteDocumentNonBlocking(clientRef);
-        toast({ title: "Client supprimé", description: "Le client a été supprimé avec succès." });
-        setSelectedClient(null);
+        return 0;
+      });
     }
-    
-    const openEditDialog = (client: Client) => {
-        setSelectedClient(client);
-        setIsEditDialogOpen(true);
-    }
+    return sortableItems;
+  }, [clients, sortConfig]);
 
-    const renderEmptyState = () => (
-        <div className="text-center py-12">
-            <Users className="mx-auto h-12 w-12 text-muted-foreground" />
-            <h3 className="mt-4 text-lg font-semibold">Aucun client trouvé</h3>
-            <p className="mt-2 text-sm text-muted-foreground">Commencez par ajouter votre premier client.</p>
-            <div className="mt-6">
-                <Button onClick={() => setIsAddDialogOpen(true)}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Ajouter un client
-                </Button>
-            </div>
-        </div>
-    );
+  const requestSort = (key: SortKey) => {
+    let direction: 'ascending' | 'descending' = 'ascending';
+    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (key: SortKey) => {
+    if (sortConfig.key !== key) {
+      return <ArrowUpDown className="ml-2 h-4 w-4" />;
+    }
+    return sortConfig.direction === 'ascending' ? <ArrowUpDown className="ml-2 h-4 w-4" /> : <ArrowUpDown className="ml-2 h-4 w-4" />;
+  };
+
+  const handleAddClient = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!company || !firestore) return;
+
+    const formData = new FormData(event.currentTarget);
+    const newClient = {
+      name: formData.get("name") as string,
+      email: formData.get("email") as string,
+      companyId: company.id,
+    };
+    addDocumentNonBlocking(collection(firestore, "clients"), newClient);
+    toast({ title: "Client ajouté", description: "Le nouveau client a été enregistré." });
+    setIsAddDialogOpen(false);
+    (event.target as HTMLFormElement).reset();
+  };
+
+  const handleUpdateClient = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedClient || !user || !firestore) return;
+
+    const formData = new FormData(event.currentTarget);
+    const updatedClient = {
+      name: formData.get("name") as string,
+      email: formData.get("email") as string,
+    };
+
+    const clientRef = doc(firestore, "clients", selectedClient.id);
+    updateDocumentNonBlocking(clientRef, updatedClient);
+    toast({ title: "Client modifié", description: "Les détails du client ont été mis à jour." });
+    setIsEditDialogOpen(false);
+    setSelectedClient(null);
+  };
+
+  const handleDeleteClient = () => {
+    if (!selectedClient || !firestore) return;
+    const clientRef = doc(firestore, "clients", selectedClient.id);
+    deleteDocumentNonBlocking(clientRef);
+    toast({ title: "Client supprimé", description: "Le client a été supprimé avec succès." });
+    setSelectedClient(null);
+  }
+
+  const openEditDialog = (client: Client) => {
+    setSelectedClient(client);
+    setIsEditDialogOpen(true);
+  }
+
+  const renderEmptyState = () => (
+    <div className="text-center py-12">
+      <Users className="mx-auto h-12 w-12 text-muted-foreground" />
+      <h3 className="mt-4 text-lg font-semibold">Aucun client trouvé</h3>
+      <p className="mt-2 text-sm text-muted-foreground">Commencez par ajouter votre premier client.</p>
+      <div className="mt-6">
+        <Button onClick={() => setIsAddDialogOpen(true)}>
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Ajouter un client
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -242,97 +245,97 @@ export default function ClientsPage() {
         </Dialog>
       </div>
 
-       {/* Mobile View */}
+      {/* Mobile View */}
       <div className="grid gap-4 md:hidden">
         {isLoading && [...Array(3)].map((_, i) => (
-            <Card key={i}>
-                <CardHeader><Skeleton className="h-6 w-3/5" /></CardHeader>
-                <CardContent><div className="space-y-2"><Skeleton className="h-4 w-4/5" /></div></CardContent>
-            </Card>
+          <Card key={i}>
+            <CardHeader><Skeleton className="h-6 w-3/5" /></CardHeader>
+            <CardContent><div className="space-y-2"><Skeleton className="h-4 w-4/5" /></div></CardContent>
+          </Card>
         ))}
         {!isLoading && sortedClients.length > 0 ? sortedClients?.map((client) => (
-            <Card key={client.id}>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <div>
-                        <CardTitle className="text-base font-bold">{client.name}</CardTitle>
-                        <CardDescription>{client.email}</CardDescription>
-                    </div>
-                </CardHeader>
-                 <CardFooter className="flex justify-end border-t pt-4">
-                    <ClientActions 
-                        client={client}
-                        openEditDialog={openEditDialog}
-                        setSelectedClient={setSelectedClient}
-                        handleDeleteClient={handleDeleteClient}
-                    />
-                </CardFooter>
-            </Card>
-        )) : null }
+          <Card key={client.id}>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <CardTitle className="text-base font-bold">{client.name}</CardTitle>
+                <CardDescription>{client.email}</CardDescription>
+              </div>
+            </CardHeader>
+            <CardFooter className="flex justify-end border-t pt-4">
+              <ClientActions
+                client={client}
+                openEditDialog={openEditDialog}
+                setSelectedClient={setSelectedClient}
+                handleDeleteClient={handleDeleteClient}
+              />
+            </CardFooter>
+          </Card>
+        )) : null}
       </div>
       {!isLoading && sortedClients.length === 0 && (
-         <div className="md:hidden">{renderEmptyState()}</div>
+        <div className="md:hidden">{renderEmptyState()}</div>
       )}
 
 
       {/* Desktop View */}
       <div className="hidden md:block border rounded-lg">
         {isLoading || sortedClients.length > 0 ? (
-            <Table>
+          <Table>
             <TableHeader>
-                <TableRow>
+              <TableRow>
                 <TableHead>
-                    <Button variant="ghost" onClick={() => requestSort('name')} className="px-0">
+                  <Button variant="ghost" onClick={() => requestSort('name')} className="px-0">
                     Nom {getSortIcon('name')}
-                    </Button>
+                  </Button>
                 </TableHead>
                 <TableHead>
-                    <Button variant="ghost" onClick={() => requestSort('email')} className="px-0">
-                        Email {getSortIcon('email')}
-                    </Button>
+                  <Button variant="ghost" onClick={() => requestSort('email')} className="px-0">
+                    Email {getSortIcon('email')}
+                  </Button>
                 </TableHead>
                 <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
+              </TableRow>
             </TableHeader>
             <TableBody>
-                {isLoading &&
+              {isLoading &&
                 [...Array(5)].map((_, i) => (
-                    <TableRow key={i}>
+                  <TableRow key={i}>
                     <TableCell>
-                        <Skeleton className="h-4 w-2/5" />
+                      <Skeleton className="h-4 w-2/5" />
                     </TableCell>
                     <TableCell>
-                        <Skeleton className="h-4 w-3/5" />
+                      <Skeleton className="h-4 w-3/5" />
                     </TableCell>
                     <TableCell className="text-right">
-                        <Skeleton className="h-8 w-8 ml-auto" />
+                      <Skeleton className="h-8 w-8 ml-auto" />
                     </TableCell>
-                    </TableRow>
+                  </TableRow>
                 ))}
-                {!isLoading && sortedClients?.map((client) => (
+              {!isLoading && sortedClients?.map((client) => (
                 <TableRow key={client.id}>
-                    <TableCell className="font-medium">{client.name}</TableCell>
-                    <TableCell>{client.email}</TableCell>
-                    <TableCell className="text-right">
-                    <ClientActions 
-                            client={client}
-                            openEditDialog={openEditDialog}
-                            setSelectedClient={setSelectedClient}
-                            handleDeleteClient={handleDeleteClient}
-                        />
-                    </TableCell>
+                  <TableCell className="font-medium">{client.name}</TableCell>
+                  <TableCell>{client.email}</TableCell>
+                  <TableCell className="text-right">
+                    <ClientActions
+                      client={client}
+                      openEditDialog={openEditDialog}
+                      setSelectedClient={setSelectedClient}
+                      handleDeleteClient={handleDeleteClient}
+                    />
+                  </TableCell>
                 </TableRow>
-                ))}
+              ))}
             </TableBody>
-            </Table>
+          </Table>
         ) : (
-            renderEmptyState()
+          renderEmptyState()
         )}
       </div>
 
       {selectedClient && (
         <Dialog open={isEditDialogOpen} onOpenChange={(isOpen) => {
-            if (!isOpen) setSelectedClient(null);
-            setIsEditDialogOpen(isOpen);
+          if (!isOpen) setSelectedClient(null);
+          setIsEditDialogOpen(isOpen);
         }}>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>

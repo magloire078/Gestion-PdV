@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useUser, useFirestore, useDoc, useMemoFirebase, updateDocumentNonBlocking, useStorage, useAuth } from "@/firebase";
+import { useProfile } from "@/hooks/use-profile";
 import { doc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { updateProfile } from "firebase/auth";
@@ -53,10 +54,13 @@ export default function SettingsPage() {
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
 
+  const { profile } = useProfile();
+  const companyId = profile?.companyId;
+
   const companyRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return doc(firestore, "companies", user.uid);
-  }, [firestore, user]);
+    if (!companyId || !firestore) return null;
+    return doc(firestore, "companies", companyId);
+  }, [firestore, companyId]);
 
   const { data: company, isLoading, mutate: mutateCompany } = useDoc<Company>(companyRef);
 
@@ -73,13 +77,13 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (company) {
-      form.reset({ 
+      form.reset({
         name: company.name,
         address: company.address || "",
         phone: company.phone || "",
         contactEmail: company.contactEmail || "",
         taxId: company.taxId || "",
-       });
+      });
     }
   }, [company, form]);
 
@@ -100,26 +104,26 @@ export default function SettingsPage() {
     const storageRef = ref(storage, `avatars/${user.uid}/${file.name}`);
 
     try {
-        await uploadBytes(storageRef, file);
-        const photoURL = await getDownloadURL(storageRef);
-        
-        await updateProfile(auth.currentUser, { photoURL });
+      await uploadBytes(storageRef, file);
+      const photoURL = await getDownloadURL(storageRef);
 
-        toast({
-            title: "Avatar mis à jour",
-            description: "Votre nouvelle image de profil a été enregistrée.",
-        });
-        // Recharger pour voir le nouvel avatar partout
-        window.location.reload(); 
+      await updateProfile(auth.currentUser, { photoURL });
+
+      toast({
+        title: "Avatar mis à jour",
+        description: "Votre nouvelle image de profil a été enregistrée.",
+      });
+      // Recharger pour voir le nouvel avatar partout
+      window.location.reload();
     } catch (error) {
-        console.error("Error uploading avatar:", error);
-        toast({
-            variant: "destructive",
-            title: "Erreur de téléversement",
-            description: "Impossible de téléverser votre avatar. Veuillez réessayer.",
-        });
+      console.error("Error uploading avatar:", error);
+      toast({
+        variant: "destructive",
+        title: "Erreur de téléversement",
+        description: "Impossible de téléverser votre avatar. Veuillez réessayer.",
+      });
     } finally {
-        setIsAvatarUploading(false);
+      setIsAvatarUploading(false);
     }
   };
 
@@ -128,28 +132,28 @@ export default function SettingsPage() {
     if (!file || !user || !companyRef || !storage) return;
 
     setIsLogoUploading(true);
-    const storageRef = ref(storage, `logos/${user.uid}/${file.name}`);
+    const storageRef = ref(storage, `logos/${companyId}/${file.name}`);
 
     try {
-        await uploadBytes(storageRef, file);
-        const logoUrl = await getDownloadURL(storageRef);
-        
-        updateDocumentNonBlocking(companyRef, { logoUrl });
+      await uploadBytes(storageRef, file);
+      const logoUrl = await getDownloadURL(storageRef);
 
-        toast({
-            title: "Logo mis à jour",
-            description: "Le logo de votre entreprise a été enregistré.",
-        });
-        mutateCompany(); // Force re-fetch of company data to show new logo
+      updateDocumentNonBlocking(companyRef, { logoUrl });
+
+      toast({
+        title: "Logo mis à jour",
+        description: "Le logo de votre entreprise a été enregistré.",
+      });
+      mutateCompany(); // Force re-fetch of company data to show new logo
     } catch (error) {
-        console.error("Error uploading logo:", error);
-        toast({
-            variant: "destructive",
-            title: "Erreur de téléversement",
-            description: "Impossible de téléverser votre logo. Veuillez réessayer.",
-        });
+      console.error("Error uploading logo:", error);
+      toast({
+        variant: "destructive",
+        title: "Erreur de téléversement",
+        description: "Impossible de téléverser votre logo. Veuillez réessayer.",
+      });
     } finally {
-        setIsLogoUploading(false);
+      setIsLogoUploading(false);
     }
   };
 
@@ -164,145 +168,145 @@ export default function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8">
-            <div className="space-y-6">
-              <h3 className="text-lg font-medium">Profil Utilisateur</h3>
-              <div className="flex items-center gap-4">
-                  <Avatar className="h-20 w-20">
-                      <AvatarImage src={user?.photoURL ?? undefined} />
-                      <AvatarFallback>
-                          <UserIcon className="h-10 w-10 text-muted-foreground" />
-                      </AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col gap-2">
-                      <Button onClick={() => avatarFileInputRef.current?.click()} disabled={isAvatarUploading}>
-                          {isAvatarUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                          Changer l'avatar
-                      </Button>
-                      <Input 
-                          type="file" 
-                          ref={avatarFileInputRef} 
-                          onChange={handleAvatarUpload}
-                          className="hidden"
-                          accept="image/png, image/jpeg, image/gif"
-                      />
-                      <p className="text-xs text-muted-foreground">PNG, JPG, GIF jusqu'à 2MB.</p>
-                  </div>
+          <div className="space-y-6">
+            <h3 className="text-lg font-medium">Profil Utilisateur</h3>
+            <div className="flex items-center gap-4">
+              <Avatar className="h-20 w-20">
+                <AvatarImage src={user?.photoURL ?? undefined} />
+                <AvatarFallback>
+                  <UserIcon className="h-10 w-10 text-muted-foreground" />
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col gap-2">
+                <Button onClick={() => avatarFileInputRef.current?.click()} disabled={isAvatarUploading}>
+                  {isAvatarUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Changer l'avatar
+                </Button>
+                <Input
+                  type="file"
+                  ref={avatarFileInputRef}
+                  onChange={handleAvatarUpload}
+                  className="hidden"
+                  accept="image/png, image/jpeg, image/gif"
+                />
+                <p className="text-xs text-muted-foreground">PNG, JPG, GIF jusqu'à 2MB.</p>
               </div>
             </div>
+          </div>
 
-            <div className="space-y-6">
-              <h3 className="text-lg font-medium">Logo de l'entreprise</h3>
-              <div className="flex items-center gap-4">
-                  <div className="h-20 w-20 flex items-center justify-center rounded-md border border-dashed">
-                    {company?.logoUrl ? (
-                      <Image src={company.logoUrl} alt="Logo de l'entreprise" width={80} height={80} className="object-contain rounded-md" />
-                    ) : (
-                      <Building className="h-10 w-10 text-muted-foreground" />
+          <div className="space-y-6">
+            <h3 className="text-lg font-medium">Logo de l'entreprise</h3>
+            <div className="flex items-center gap-4">
+              <div className="h-20 w-20 flex items-center justify-center rounded-md border border-dashed">
+                {company?.logoUrl ? (
+                  <Image src={company.logoUrl} alt="Logo de l'entreprise" width={80} height={80} className="object-contain rounded-md" />
+                ) : (
+                  <Building className="h-10 w-10 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button onClick={() => logoFileInputRef.current?.click()} disabled={isLogoUploading}>
+                  {isLogoUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Changer le logo
+                </Button>
+                <Input
+                  type="file"
+                  ref={logoFileInputRef}
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                  accept="image/png, image/jpeg, image/gif"
+                />
+                <p className="text-xs text-muted-foreground">PNG, JPG, GIF jusqu'à 2MB. Fond transparent recommandé.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <h3 className="text-lg font-medium">Informations Générales</h3>
+            {isLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : (
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nom de l'entreprise</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Votre Entreprise SAS" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
                     )}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                      <Button onClick={() => logoFileInputRef.current?.click()} disabled={isLogoUploading}>
-                          {isLogoUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                          Changer le logo
-                      </Button>
-                      <Input 
-                          type="file" 
-                          ref={logoFileInputRef} 
-                          onChange={handleLogoUpload}
-                          className="hidden"
-                          accept="image/png, image/jpeg, image/gif"
-                      />
-                      <p className="text-xs text-muted-foreground">PNG, JPG, GIF jusqu'à 2MB. Fond transparent recommandé.</p>
-                  </div>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <h3 className="text-lg font-medium">Informations Générales</h3>
-              {isLoading ? (
-                <div className="space-y-4">
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-10 w-full" />
-                </div>
-              ) : (
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Nom de l'entreprise</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Votre Entreprise SAS" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="address"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Adresse</FormLabel>
-                          <FormControl>
-                            <Input placeholder="123 Rue de la République, 75001 Paris" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="phone"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Numéro de téléphone</FormLabel>
-                          <FormControl>
-                            <Input placeholder="+33 1 23 45 67 89" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="contactEmail"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Email de contact</FormLabel>
-                          <FormControl>
-                            <Input placeholder="contact@votre-entreprise.com" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="taxId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Numéro d'identification fiscale</FormLabel>
-                          <FormControl>
-                            <Input placeholder="FR123456789" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <Button type="submit" disabled={form.formState.isSubmitting}>
-                      {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Enregistrer les modifications
-                    </Button>
-                  </form>
-                </Form>
-              )}
-            </div>
+                  />
+                  <FormField
+                    control={form.control}
+                    name="address"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Adresse</FormLabel>
+                        <FormControl>
+                          <Input placeholder="123 Rue de la République, 75001 Paris" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Numéro de téléphone</FormLabel>
+                        <FormControl>
+                          <Input placeholder="+33 1 23 45 67 89" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="contactEmail"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email de contact</FormLabel>
+                        <FormControl>
+                          <Input placeholder="contact@votre-entreprise.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="taxId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Numéro d'identification fiscale</FormLabel>
+                        <FormControl>
+                          <Input placeholder="FR123456789" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" disabled={form.formState.isSubmitting}>
+                    {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Enregistrer les modifications
+                  </Button>
+                </form>
+              </Form>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -1,5 +1,6 @@
 
 "use client";
+import { FirebaseError } from "firebase/app";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -28,8 +29,7 @@ import { useAuth, useFirestore } from "@/firebase";
 import { initiateEmailSignUp } from "@/firebase/non-blocking-login";
 import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
-import { FirebaseError } from "firebase/app";
-import { doc } from "firebase/firestore";
+import { doc, collection } from "firebase/firestore";
 
 const formSchema = z.object({
   companyName: z.string().min(2, "Le nom de l'entreprise doit comporter au moins 2 caractères."),
@@ -55,11 +55,32 @@ export default function SignUpPage() {
     initiateEmailSignUp(auth, values.email, values.password)
       .then((userCredential) => {
         if (userCredential && userCredential.user) {
-          const companyRef = doc(firestore, "companies", userCredential.user.uid);
-          setDocumentNonBlocking(companyRef, {
+          const userId = userCredential.user.uid;
+          const companyId = doc(collection(firestore, "companies")).id;
+
+          const companyData = {
+            id: companyId,
             name: values.companyName,
-            creationDate: new Date().toISOString(),
-          }, { merge: true });
+            ownerId: userId,
+            subscriptionStatus: 'trial',
+            subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            createdAt: new Date().toISOString(),
+          };
+
+          const userProfileData = {
+            id: userId,
+            email: values.email,
+            companyId: companyId,
+            role: 'owner',
+            createdAt: new Date().toISOString(),
+          };
+
+          const companyRef = doc(firestore, "companies", companyId);
+          const userRef = doc(firestore, "users", userId);
+
+          // We use { merge: true } but since these are new docs it's fine
+          setDocumentNonBlocking(companyRef, companyData, { merge: true });
+          setDocumentNonBlocking(userRef, userProfileData, { merge: true });
 
           router.push("/dashboard");
         }

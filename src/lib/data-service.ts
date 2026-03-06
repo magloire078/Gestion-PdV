@@ -16,12 +16,13 @@ export class DataService {
         return firestore;
     }
 
-    static async getProducts(): Promise<Product[]> {
+    static async getProducts(companyId: string): Promise<Product[]> {
         if (typeof window !== 'undefined' && navigator.onLine) {
             try {
                 const firestore = this.getFirestoreInstance();
                 const productsCol = collection(firestore, 'products');
-                const snapshot = await getDocs(productsCol);
+                const q = query(productsCol, where('companyId', '==', companyId));
+                const snapshot = await getDocs(q);
                 const products = snapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data(),
@@ -35,7 +36,7 @@ export class DataService {
                 console.error('Error fetching from Firebase, falling back to local:', error);
             }
         }
-        return db.products.toArray();
+        return db.products.where('companyId').equals(companyId).toArray();
     }
 
     static async saveSale(saleData: Omit<Sale, 'id' | 'synced'>): Promise<void> {
@@ -48,12 +49,15 @@ export class DataService {
         await db.sales.add(sale);
 
         if (typeof window !== 'undefined' && navigator.onLine) {
-            await this.syncPendingSales();
+            await this.syncPendingSales(sale.companyId);
         }
     }
 
-    static async syncPendingSales(): Promise<void> {
-        const pendingSales = await db.sales.where('synced').equals(0).toArray();
+    static async syncPendingSales(companyId: string): Promise<void> {
+        const pendingSales = await db.sales
+            .where('synced').equals(0)
+            .and(s => s.companyId === companyId)
+            .toArray();
 
         if (pendingSales.length === 0) return;
 
@@ -62,15 +66,16 @@ export class DataService {
 
         for (const sale of pendingSales) {
             try {
+                const { id, ...saleToSync } = sale;
                 await addDoc(salesCol, {
-                    ...sale,
+                    ...saleToSync,
                     timestamp: Timestamp.fromMillis(sale.timestamp),
                     synced: 1
                 });
 
                 // Mark as synced locally
-                if (sale.id) {
-                    await db.sales.update(sale.id, { synced: 1 });
+                if (id) {
+                    await db.sales.update(id, { synced: 1 });
                 }
             } catch (error) {
                 console.error('Failed to sync sale:', sale.id, error);

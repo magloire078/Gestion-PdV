@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { CldImage } from 'next-cloudinary';
 import {
     Table,
     TableBody,
@@ -52,19 +53,15 @@ import {
     Package,
     Search,
 } from "lucide-react";
-import { useFirestore, useMemoFirebase } from "@/firebase";
-import { collection, doc, addDoc, updateDoc, deleteDoc } from "firebase/firestore";
+import { useFirebase, useMemoFirebase, useCollection } from "@/firebase";
+import { collection, doc, addDoc, updateDoc, deleteDoc, query, where } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCollection } from "@/firebase/firestore/use-collection";
-
-interface Product {
-    id: string;
-    name: string;
-    price: number;
-    category: string;
-    stock: number;
-}
+import { DataService } from "@/lib/data-service";
+import { Product } from "@/lib/db";
+import { useProfile } from "@/hooks/use-profile";
+import { uploadToCloudinary } from "@/lib/cloudinary";
+import { Loader2 } from "lucide-react";
 
 const CATEGORIES = [
     "Boissons",
@@ -81,168 +78,163 @@ const EMPTY_FORM = {
     price: "",
     category: "Divers",
     stock: "0",
+    minStock: "5",
+    barcode: "",
+    imageUrl: "",
 };
 
 export default function ProductsPage() {
-    const firestore = useFirestore();
+    const { firestore, user, isUserLoading: isAuthLoading } = useFirebase();
+    const { company, isLoading: isProfileLoading } = useProfile();
     const { toast } = useToast();
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
     const [search, setSearch] = useState("");
-    const [formData, setFormData] = useState(EMPTY_FORM);
+    //formData removed as it's now local to ProductDialog
 
-    const productsRef = useMemoFirebase(() => {
-        if (!firestore) return null;
-        return collection(firestore, "products");
-    }, [firestore]);
+    const productsQuery = useMemoFirebase(() => {
+        if (!firestore || !company?.id) return null;
+        return query(collection(firestore, "products"), where("companyId", "==", company.id));
+    }, [firestore, company?.id]);
 
-    const { data: products, isLoading } = useCollection<Omit<Product, "id">>(productsRef);
+    const { data: products, isLoading: isCollectionLoading } = useCollection<Product>(productsQuery);
+    const isLoading = isAuthLoading || isProfileLoading || isCollectionLoading;
 
     const filtered = useMemo(() => {
         if (!products) return [];
         const q = search.toLowerCase();
         return products.filter(
-            (p) =>
+            (p: Product) =>
                 p.name.toLowerCase().includes(q) ||
                 p.category.toLowerCase().includes(q)
         );
     }, [products, search]);
 
-    const handleAdd = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!productsRef) return;
-        try {
-            await addDoc(productsRef, {
-                name: formData.name.trim(),
-                price: parseFloat(formData.price),
-                category: formData.category,
-                stock: parseInt(formData.stock),
+    const handleAdd = async (data: any) => {
+        if (!firestore || !user || !company) {
+            toast({
+                title: "Erreur",
+                description: "Vous devez être connecté à une entreprise pour ajouter un produit.",
+                variant: "destructive",
             });
-            toast({ title: "Produit ajouté", description: `${formData.name} a été ajouté au catalogue.` });
+            return;
+        }
+
+        console.log("Adding product with data:", {
+            name: data.name,
+            companyId: company.id,
+            price: data.price,
+            stock: data.stock,
+            userId: user.uid
+        });
+
+        try {
+            const productData = {
+                name: data.name.trim(),
+                companyId: company.id,
+                price: parseFloat(data.price) || 0,
+                category: data.category,
+                stock: parseInt(data.stock) || 0,
+                minStock: parseInt(data.minStock) || 0,
+                barcode: (data.barcode || "").trim(),
+                imageUrl: (data.imageUrl || "").trim(),
+                createdAt: new Date().toISOString(),
+                createdBy: user.uid,
+            };
+
+            console.log("Saving product locally first via DataService...");
+            const localId = await DataService.saveProduct(productData);
+            console.log("Product saved locally with temp ID:", localId);
+
             setIsAddDialogOpen(false);
-            setFormData(EMPTY_FORM);
-        } catch {
-            toast({ variant: "destructive", title: "Erreur", description: "Impossible d'ajouter le produit." });
+            toast({
+                title: "Produit ajouté",
+                description: "Le produit a été enregistré. Il sera synchronisé avec le serveur en arrière-plan.",
+            });
+        } catch (error: any) {
+            console.error("Detailed error adding product:", error);
+            toast({
+                title: "Erreur lors de l'ajout",
+                description: "Impossible d'ajouter le produit. Vérifiez votre connexion et les logs console.",
+                variant: "destructive",
+            });
         }
     };
 
-    const handleEdit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!editingProduct || !firestore) return;
+    const handleEdit = async (data: any) => {
+        if (!editingProduct || !user) return;
+
         try {
-            const ref = doc(firestore, "products", editingProduct.id);
-            await updateDoc(ref, {
-                name: formData.name.trim(),
-                price: parseFloat(formData.price),
-                category: formData.category,
-                stock: parseInt(formData.stock),
-            });
-            toast({ title: "Produit modifié", description: `${formData.name} a été mis à jour.` });
+            const productData = {
+                name: data.name.trim(),
+                price: parseFloat(data.price) || 0,
+                category: data.category,
+                stock: parseInt(data.stock) || 0,
+                minStock: parseInt(data.minStock) || 0,
+                barcode: (data.barcode || "").trim(),
+                imageUrl: (data.imageUrl || "").trim(),
+                updatedAt: new Date().toISOString(),
+            };
+
+            console.log("Updating product locally first...");
+            await DataService.updateProduct(editingProduct.id, productData);
+
             setEditingProduct(null);
-        } catch {
-            toast({ variant: "destructive", title: "Erreur", description: "Impossible de modifier le produit." });
+            toast({
+                title: "Produit mis à jour",
+                description: "Les modifications ont été enregistrées localement et seront synchronisées.",
+            });
+        } catch (error: any) {
+            console.error("Error updating product:", error);
+            toast({
+                title: "Erreur de mise à jour",
+                description: "Impossible de modifier le produit localement.",
+                variant: "destructive",
+            });
         }
     };
 
     const handleDelete = async () => {
-        if (!deletingProduct || !firestore) return;
-        try {
-            await deleteDoc(doc(firestore, "products", deletingProduct.id));
-            toast({ title: "Produit supprimé", description: `${deletingProduct.name} a été supprimé.` });
-            setDeletingProduct(null);
-        } catch {
-            toast({ variant: "destructive", title: "Erreur", description: "Impossible de supprimer le produit." });
-        }
-    };
+        if (!deletingProduct) return;
 
-    const openEdit = (product: Product) => {
-        setEditingProduct(product);
-        setFormData({
-            name: product.name,
-            price: String(product.price),
-            category: product.category,
-            stock: String(product.stock),
-        });
+        console.log("Deleting product locally first...");
+
+        try {
+            await DataService.deleteProduct(deletingProduct.id);
+            toast({
+                title: "Produit supprimé",
+                description: `${deletingProduct.name} a été retiré de la base locale.`
+            });
+            setDeletingProduct(null);
+        } catch (error: any) {
+            console.error('Erreur suppression produit:', error);
+            toast({
+                variant: "destructive",
+                title: "Erreur de suppression",
+                description: "Impossible de supprimer le produit."
+            });
+        }
     };
 
     const formatCurrency = (amount: number) =>
         new Intl.NumberFormat("fr-FR", { style: "currency", currency: "XOF", minimumFractionDigits: 0 }).format(amount);
-
-    const ProductForm = ({ onSubmit, title, description, submitLabel }: {
-        onSubmit: (e: React.FormEvent) => void;
-        title: string;
-        description: string;
-        submitLabel: string;
-    }) => (
-        <form onSubmit={onSubmit}>
-            <DialogHeader>
-                <DialogTitle>{title}</DialogTitle>
-                <DialogDescription>{description}</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="name" className="text-right">Nom</Label>
-                    <Input
-                        id="name" className="col-span-3" required
-                        value={formData.name}
-                        onChange={(e) => setFormData((f) => ({ ...f, name: e.target.value }))}
-                    />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="price" className="text-right">Prix (FCFA)</Label>
-                    <Input
-                        id="price" type="number" min="0" step="50" className="col-span-3" required
-                        value={formData.price}
-                        onChange={(e) => setFormData((f) => ({ ...f, price: e.target.value }))}
-                    />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="category" className="text-right">Catégorie</Label>
-                    <select
-                        id="category"
-                        className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                        value={formData.category}
-                        onChange={(e) => setFormData((f) => ({ ...f, category: e.target.value }))}
-                    >
-                        {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="stock" className="text-right">Stock</Label>
-                    <Input
-                        id="stock" type="number" min="0" className="col-span-3" required
-                        value={formData.stock}
-                        onChange={(e) => setFormData((f) => ({ ...f, stock: e.target.value }))}
-                    />
-                </div>
-            </div>
-            <DialogFooter>
-                <Button type="submit">{submitLabel}</Button>
-            </DialogFooter>
-        </form>
-    );
-
     return (
         <div className="flex flex-col gap-6">
+            {/* Not logged in warning */}
+            {!isLoading && !user && (
+                <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+                    ⚠️ Vous devez être connecté pour gérer les produits.
+                </div>
+            )}
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-semibold">Produits POS</h1>
-                <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if (open) setFormData(EMPTY_FORM); }}>
-                    <DialogTrigger asChild>
-                        <Button>
-                            <PlusCircle className="mr-2 h-4 w-4" />
-                            Ajouter un produit
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[425px]">
-                        <ProductForm
-                            onSubmit={handleAdd}
-                            title="Nouveau produit"
-                            description="Ajoutez un produit au catalogue du POS."
-                            submitLabel="Ajouter"
-                        />
-                    </DialogContent>
-                </Dialog>
+                <h1 className="text-2xl font-semibold">Catalogue Produits</h1>
+                <ProductDialog
+                    mode="add"
+                    open={isAddDialogOpen}
+                    onOpenChange={setIsAddDialogOpen}
+                    onSubmit={handleAdd}
+                />
             </div>
 
             {/* Stats cards */}
@@ -264,7 +256,7 @@ export default function ProductsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {isLoading ? "…" : new Set(products?.map((p) => p.category)).size}
+                            {isLoading ? "…" : new Set(products?.map((p: Product) => p.category)).size}
                         </div>
                         <p className="text-xs text-muted-foreground">catégories actives</p>
                     </CardContent>
@@ -276,7 +268,7 @@ export default function ProductsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {isLoading ? "…" : (products?.reduce((s, p) => s + (p.stock || 0), 0) ?? 0)}
+                            {isLoading ? "…" : (products?.reduce((s: number, p: Product) => s + (p.stock || 0), 0) ?? 0)}
                         </div>
                         <p className="text-xs text-muted-foreground">unités en stock</p>
                     </CardContent>
@@ -302,14 +294,23 @@ export default function ProductsPage() {
                         <CardContent><div className="space-y-2"><Skeleton className="h-4 w-4/5" /><Skeleton className="h-4 w-3/5" /></div></CardContent>
                     </Card>
                 ))}
-                {!isLoading && filtered.map((p) => (
+                {!isLoading && filtered.map((p: Product) => (
                     <Card key={p.id}>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <div>
+                        <CardHeader className="flex flex-row items-center gap-4 pb-2">
+                            {p.imageUrl ? (
+                                <CldImage src={p.imageUrl} alt={p.name} width={48} height={48} preserveTransformations className="h-12 w-12 object-cover rounded-md border" />
+                            ) : (
+                                <div className="h-12 w-12 bg-muted rounded-md flex items-center justify-center">
+                                    <Package className="h-6 w-6 text-muted-foreground" />
+                                </div>
+                            )}
+                            <div className="flex-1">
                                 <CardTitle className="text-base">{p.name}</CardTitle>
-                                <CardDescription><Badge variant="outline">{p.category}</Badge></CardDescription>
+                                <CardDescription className="flex justify-between items-center">
+                                    <Badge variant="outline">{p.category}</Badge>
+                                    <span className="font-bold text-lg">{formatCurrency(p.price)}</span>
+                                </CardDescription>
                             </div>
-                            <div className="text-right font-bold text-lg">{formatCurrency(p.price)}</div>
                         </CardHeader>
                         <CardContent className="flex items-center justify-between">
                             <span className="text-sm text-muted-foreground">Stock: {p.stock}</span>
@@ -319,7 +320,7 @@ export default function ProductsPage() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                    <DropdownMenuItem onClick={() => openEdit(p)}>Modifier</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setEditingProduct(p)}>Modifier</DropdownMenuItem>
                                     <DropdownMenuItem className="text-destructive" onClick={() => setDeletingProduct(p)}>Supprimer</DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
@@ -341,8 +342,10 @@ export default function ProductsPage() {
                     <Table>
                         <TableHeader>
                             <TableRow>
+                                <TableHead className="w-[80px]">Image</TableHead>
                                 <TableHead>Nom</TableHead>
                                 <TableHead>Catégorie</TableHead>
+                                <TableHead>Code-barres</TableHead>
                                 <TableHead className="text-right">Prix (FCFA)</TableHead>
                                 <TableHead className="text-right">Stock</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
@@ -351,20 +354,35 @@ export default function ProductsPage() {
                         <TableBody>
                             {isLoading && [...Array(5)].map((_, i) => (
                                 <TableRow key={i}>
+                                    <TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell>
                                     <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                                     <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                                     <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
                                     <TableCell className="text-right"><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
                                     <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
                                 </TableRow>
                             ))}
-                            {!isLoading && filtered.map((product) => (
+                            {!isLoading && filtered.map((product: Product) => (
                                 <TableRow key={product.id}>
-                                    <TableCell className="font-medium">{product.name}</TableCell>
+                                    <TableCell>
+                                        {product.imageUrl ? (
+                                            <CldImage src={product.imageUrl} alt={product.name} width={40} height={40} preserveTransformations className="h-10 w-10 object-cover rounded-md border" />
+                                        ) : (
+                                            <div className="h-10 w-10 bg-muted rounded-md flex items-center justify-center">
+                                                <Package className="h-5 w-5 text-muted-foreground" />
+                                            </div>
+                                        )}
+                                    </TableCell>
+                                    <TableCell className="font-medium">
+                                        <div>{product.name}</div>
+                                        <div className="text-xs text-muted-foreground md:hidden">{product.barcode}</div>
+                                    </TableCell>
                                     <TableCell><Badge variant="outline">{product.category}</Badge></TableCell>
+                                    <TableCell className="text-xs font-mono">{product.barcode || "-"}</TableCell>
                                     <TableCell className="text-right">{formatCurrency(product.price)}</TableCell>
                                     <TableCell className="text-right">
-                                        <span className={product.stock < 10 ? "text-destructive font-medium" : ""}>{product.stock}</span>
+                                        <span className={product.stock < (product.minStock || 5) ? "text-destructive font-bold" : ""}>{product.stock}</span>
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <DropdownMenu>
@@ -376,7 +394,7 @@ export default function ProductsPage() {
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
                                                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                <DropdownMenuItem onClick={() => openEdit(product)}>Modifier</DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => setEditingProduct(product)}>Modifier</DropdownMenuItem>
                                                 <DropdownMenuItem
                                                     className="text-destructive focus:text-destructive"
                                                     onClick={() => setDeletingProduct(product)}
@@ -396,7 +414,7 @@ export default function ProductsPage() {
                         <h3 className="mt-4 text-lg font-semibold">Aucun produit</h3>
                         <p className="mt-2 text-sm text-muted-foreground">Ajoutez votre premier produit au catalogue POS.</p>
                         <div className="mt-6">
-                            <Button onClick={() => { setFormData(EMPTY_FORM); setIsAddDialogOpen(true); }}>
+                            <Button onClick={() => { setIsAddDialogOpen(true); }}>
                                 <PlusCircle className="mr-2 h-4 w-4" />
                                 Ajouter un produit
                             </Button>
@@ -406,18 +424,13 @@ export default function ProductsPage() {
             </div>
 
             {/* Edit Dialog */}
-            {editingProduct && (
-                <Dialog open={!!editingProduct} onOpenChange={(open) => { if (!open) setEditingProduct(null); }}>
-                    <DialogContent className="sm:max-w-[425px]">
-                        <ProductForm
-                            onSubmit={handleEdit}
-                            title="Modifier le produit"
-                            description={`Mettez à jour les détails de "${editingProduct.name}".`}
-                            submitLabel="Enregistrer"
-                        />
-                    </DialogContent>
-                </Dialog>
-            )}
+            <ProductDialog
+                mode="edit"
+                product={editingProduct}
+                open={!!editingProduct}
+                onOpenChange={(open) => !open && setEditingProduct(null)}
+                onSubmit={handleEdit}
+            />
 
             {/* Delete Confirmation */}
             <AlertDialog open={!!deletingProduct} onOpenChange={(open) => { if (!open) setDeletingProduct(null); }}>
@@ -437,5 +450,195 @@ export default function ProductsPage() {
                 </AlertDialogContent>
             </AlertDialog>
         </div>
+    );
+}
+
+function ProductDialog({ mode, product, open, onOpenChange, onSubmit }: {
+    mode: "add" | "edit";
+    product?: Product | null;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    onSubmit: (data: any) => Promise<void>;
+}) {
+    const [localData, setLocalData] = useState(EMPTY_FORM);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (open) {
+            if (mode === "edit" && product) {
+                setLocalData({
+                    name: product.name,
+                    price: String(product.price),
+                    category: product.category,
+                    stock: String(product.stock),
+                    minStock: String(product.minStock || 5),
+                    barcode: product.barcode || "",
+                    imageUrl: product.imageUrl || "",
+                });
+            } else {
+                setLocalData(EMPTY_FORM);
+            }
+        }
+    }, [open, mode, product]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        try {
+            await onSubmit(localData);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsSubmitting(true);
+        try {
+            const url = await uploadToCloudinary(file, "products");
+            if (url) {
+                setLocalData(prev => ({ ...prev, imageUrl: url }));
+                toast({ title: "Image chargée", description: "L'image du produit a été mise à jour sur Cloudinary." });
+            }
+        } catch (error) {
+            toast({ variant: "destructive", title: "Erreur", description: "Échec du chargement de l'image." });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const title = mode === "add" ? "Nouveau produit" : "Modifier le produit";
+    const description = mode === "add"
+        ? "Ajoutez un produit au catalogue du POS."
+        : `Mettez à jour les détails de "${product?.name}".`;
+    const submitLabel = isSubmitting ? "En cours..." : (mode === "add" ? "Ajouter" : "Enregistrer");
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            {mode === "add" && (
+                <DialogTrigger asChild>
+                    <Button>
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Ajouter un produit
+                    </Button>
+                </DialogTrigger>
+            )}
+            <DialogContent className="sm:max-w-[425px]">
+                <form onSubmit={handleSubmit}>
+                    <DialogHeader>
+                        <DialogTitle>{title}</DialogTitle>
+                        <DialogDescription>{description}</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="name" className="text-right">Nom</Label>
+                            <Input
+                                id="name" className="col-span-3" required
+                                value={localData.name}
+                                onChange={(e) => setLocalData(d => ({ ...d, name: e.target.value }))}
+                            />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="price" className="text-right">Prix (FCFA)</Label>
+                            <Input
+                                id="price" type="number" min="0" step="50" className="col-span-3" required
+                                value={localData.price}
+                                onChange={(e) => setLocalData(d => ({ ...d, price: e.target.value }))}
+                            />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="category" className="text-right">Catégorie</Label>
+                            <select
+                                id="category"
+                                className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                                value={localData.category}
+                                onChange={(e) => setLocalData(d => ({ ...d, category: e.target.value }))}
+                            >
+                                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="stock" className="text-right">Stock</Label>
+                            <Input
+                                id="stock" type="number" min="0" className="col-span-3" required
+                                value={localData.stock}
+                                onChange={(e) => setLocalData(d => ({ ...d, stock: e.target.value }))}
+                            />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="minStock" className="text-right">Seuil d'alerte</Label>
+                            <Input
+                                id="minStock" type="number" min="0" className="col-span-3" required
+                                value={localData.minStock}
+                                onChange={(e) => setLocalData(d => ({ ...d, minStock: e.target.value }))}
+                            />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="barcode" className="text-right">Code-barres</Label>
+                            <Input
+                                id="barcode" className="col-span-3"
+                                placeholder="Scanner ou saisir..."
+                                value={localData.barcode}
+                                onChange={(e) => setLocalData(d => ({ ...d, barcode: e.target.value }))}
+                            />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="image" className="text-right">Image (Fichier)</Label>
+                            <div className="col-span-3">
+                                <Input
+                                    id="image" type="file" accept="image/*"
+                                    onChange={handleImageUpload}
+                                    disabled={isSubmitting}
+                                />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="imageUrl" className="text-right">Image (URL)</Label>
+                            <Input
+                                id="imageUrl" className="col-span-3"
+                                placeholder="https://..."
+                                value={localData.imageUrl}
+                                onChange={(e) => setLocalData(d => ({ ...d, imageUrl: e.target.value }))}
+                            />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right">Aperçu</Label>
+                            <div className="col-span-3 flex justify-center p-2 border rounded-md bg-muted/30 min-h-[120px] items-center">
+                                {localData.imageUrl ? (
+                                    <div className="relative group w-full flex justify-center">
+                                        <CldImage
+                                            src={localData.imageUrl}
+                                            alt="Preview"
+                                            width={800}
+                                            height={800}
+                                            preserveTransformations
+                                            className="max-h-[150px] w-auto object-contain rounded-md shadow-sm transition-transform group-hover:scale-105"
+                                        />
+                                        {isSubmitting && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-md">
+                                                <Loader2 className="h-8 w-8 animate-spin text-white" />
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="text-muted-foreground flex flex-col items-center gap-2">
+                                        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                                            <PlusCircle className="h-6 w-6 text-muted-foreground/50" />
+                                        </div>
+                                        <span className="text-xs italic">Aucune image sélectionnée</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button type="submit" disabled={isSubmitting}>{submitLabel}</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     );
 }

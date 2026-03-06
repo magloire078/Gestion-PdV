@@ -9,38 +9,64 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
-import { DollarSign, ArrowUpRight, ArrowDownRight, Scale } from "lucide-react";
+import { useUser, useFirestore, useCollection, useMemoFirebase, useFirebase } from "@/firebase";
+import { collection, query, orderBy, limit, where } from "firebase/firestore";
+import { useProfile } from "@/hooks/use-profile";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { Invoice, Expense, Product } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { AlertCircle, ArrowRight, ShoppingCart, DollarSign, ArrowUpRight, ArrowDownRight, Scale } from "lucide-react";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
-import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection } from "firebase/firestore";
-import type { Invoice, Expense } from "@/lib/types";
+import Link from "next/link";
+import { fr } from "date-fns/locale";
+import { format } from "date-fns";
 
 export default function DashboardPage() {
-  const { user } = useUser();
-  const firestore = useFirestore();
+  const { firestore } = useFirebase();
+  const { company, isLoading: isProfileLoading } = useProfile();
 
-  const invoicesCollectionRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return collection(firestore, `companies/${user.uid}/invoices`);
-  }, [firestore, user]);
+  const invoicesQuery = useMemoFirebase(() => {
+    if (!company?.id || !firestore) return null;
+    return query(collection(firestore, "invoices"), where("companyId", "==", company.id), orderBy("issueDate", "desc"), limit(5));
+  }, [firestore, company?.id]);
 
-  const expensesCollectionRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return collection(firestore, `companies/${user.uid}/expenses`);
-  }, [firestore, user]);
+  const allInvoicesQuery = useMemoFirebase(() => {
+    if (!company?.id || !firestore) return null;
+    return query(collection(firestore, "invoices"), where("companyId", "==", company.id));
+  }, [firestore, company?.id]);
 
-  const { data: invoices } = useCollection<Omit<Invoice, 'id'>>(invoicesCollectionRef);
-  const { data: expenses } = useCollection<Omit<Expense, 'id'>>(expensesCollectionRef);
+  const expensesQuery = useMemoFirebase(() => {
+    if (!company?.id || !firestore) return null;
+    return query(collection(firestore, "expenses"), where("companyId", "==", company.id));
+  }, [firestore, company?.id]);
 
-  const totalRevenue = useMemo(() => 
-    invoices
-    ?.filter((invoice) => invoice.status === "Payée")
-    .reduce((sum, invoice) => sum + invoice.amount, 0) ?? 0
-  , [invoices]);
+  const productsQuery = useMemoFirebase(() => {
+    if (!company?.id || !firestore) return null;
+    return query(collection(firestore, "products"), where("companyId", "==", company.id));
+  }, [firestore, company?.id]);
 
-  const totalExpenses = useMemo(() => 
+  const { data: allInvoices, isLoading: isLoadingAllInvoices } = useCollection<Invoice>(allInvoicesQuery);
+  const { data: recentInvoices, isLoading: isLoadingRecentInvoices } = useCollection<Invoice>(invoicesQuery);
+  const { data: expenses, isLoading: isLoadingExpenses } = useCollection<Expense>(expensesQuery);
+  const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(productsQuery);
+
+  const isLoading = isProfileLoading || isLoadingAllInvoices || isLoadingRecentInvoices || isLoadingExpenses || isLoadingProducts;
+
+  const lowStockProducts = useMemo(() => {
+    if (!products) return [];
+    return products.filter(p => p.stock <= (p.minStock || 5));
+  }, [products]);
+
+  const totalRevenue = useMemo(() =>
+    allInvoices
+      ?.filter((invoice) => invoice.status === "Payée")
+      .reduce((sum, invoice) => sum + invoice.amount, 0) ?? 0
+    , [allInvoices]);
+
+  const totalExpenses = useMemo(() =>
     expenses?.reduce((sum, expense) => sum + expense.amount, 0) ?? 0
-  , [expenses]);
+    , [expenses]);
 
   const netProfit = totalRevenue - totalExpenses;
 
@@ -73,6 +99,37 @@ export default function DashboardPage() {
     },
   ];
 
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <h1 className="text-2xl font-semibold">Tableau de bord</h1>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-32 mb-2" />
+                <Skeleton className="h-3 w-40" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-32 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-[300px] w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold">Tableau de bord</h1>
@@ -98,9 +155,84 @@ export default function DashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <OverviewChart invoices={invoices ?? []} expenses={expenses ?? []} />
+          <OverviewChart invoices={allInvoices ?? []} expenses={expenses ?? []} />
         </CardContent>
       </Card>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        <Card className="col-span-4 border-none shadow-sm bg-card/50">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div className="grid gap-1">
+              <CardTitle>Ventes Récentes</CardTitle>
+              <CardDescription>Vous avez réalisé {allInvoices?.length ?? 0} ventes ce mois-ci.</CardDescription>
+            </div>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard/invoices">Tout voir</Link>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-8">
+              {recentInvoices?.map((invoice) => (
+                <div key={invoice.id} className="flex items-center">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/10">
+                    <ShoppingCart className="h-4 w-4 text-accent" />
+                  </div>
+                  <div className="ml-4 space-y-1">
+                    <p className="text-sm font-medium leading-none">{invoice.clientName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {format(new Date(invoice.issueDate), "dd MMMM yyyy", { locale: fr })}
+                    </p>
+                  </div>
+                  <div className="ml-auto font-medium">+{formatCurrency(invoice.amount)}</div>
+                </div>
+              ))}
+              {(!recentInvoices || recentInvoices.length === 0) && (
+                <p className="text-sm text-center text-muted-foreground py-4">Aucune vente récente.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="col-span-3 border-none shadow-sm bg-card/50">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              <CardTitle>Alertes Stock Bas</CardTitle>
+            </div>
+            <CardDescription>Produits nécessitant un réapprovisionnement.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {lowStockProducts.slice(0, 6).map((product) => (
+                <div key={product.id} className="flex items-center justify-between group">
+                  <div className="grid gap-0.5">
+                    <p className="text-sm font-medium leading-none capitalize">{product.name}</p>
+                    <p className="text-xs text-muted-foreground">Seuil: {product.minStock || 5}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-destructive">{product.stock}</span>
+                    <Badge variant="destructive" className="h-5 py-0 px-1 text-[10px]">Critique</Badge>
+                  </div>
+                </div>
+              ))}
+              {lowStockProducts.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center mb-2">
+                    <Scale className="h-5 w-5 text-accent" />
+                  </div>
+                  <p className="text-sm font-medium">Stock équilibré</p>
+                  <p className="text-xs text-muted-foreground">Tous vos produits sont au-dessus des seuils.</p>
+                </div>
+              )}
+              {lowStockProducts.length > 6 && (
+                <Button asChild variant="link" className="w-full text-xs text-muted-foreground p-0 h-auto">
+                  <Link href="/dashboard/products">Voir les {lowStockProducts.length - 6} autres...</Link>
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

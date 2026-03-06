@@ -3,7 +3,7 @@ import { DataService } from './data-service';
 export class SyncEngine {
     private static intervalId: NodeJS.Timeout | null = null;
 
-    static start(intervalMs: number = 30000) {
+    static start(companyId: string, intervalMs: number = 30000) {
         if (this.intervalId) return;
 
         if (typeof window === 'undefined') return;
@@ -11,18 +11,18 @@ export class SyncEngine {
         // Listen for online/offline events
         window.addEventListener('online', () => {
             console.log('App is online. Starting sync...');
-            DataService.syncPendingSales();
+            DataService.syncPendingSales(companyId);
         });
 
         // Initial sync check
         if (navigator.onLine) {
-            DataService.syncPendingSales();
+            DataService.syncPendingSales(companyId);
         }
 
         // Periodic sync
         this.intervalId = setInterval(() => {
             if (navigator.onLine) {
-                DataService.syncPendingSales();
+                DataService.syncPendingSales(companyId);
             }
         }, intervalMs);
     }

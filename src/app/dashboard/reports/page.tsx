@@ -7,71 +7,73 @@ import { generateFinancialReport } from "@/ai/flows/generate-financial-reports";
 import { Loader2, Wand2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection } from "firebase/firestore";
+import { useProfile } from "@/hooks/use-profile";
+import { collection, query, where } from "firebase/firestore";
 import type { Invoice, Expense } from "@/lib/types";
 
 export default function ReportsPage() {
   const [report, setReport] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  const { user } = useUser();
+  const { profile, company } = useProfile();
   const firestore = useFirestore();
+  const companyId = profile?.companyId;
 
   const invoicesCollectionRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return collection(firestore, `companies/${user.uid}/invoices`);
-  }, [firestore, user]);
+    if (!companyId || !firestore) return null;
+    return query(collection(firestore, "invoices"), where("companyId", "==", companyId));
+  }, [firestore, companyId]);
 
   const expensesCollectionRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return collection(firestore, `companies/${user.uid}/expenses`);
-  }, [firestore, user]);
+    if (!companyId || !firestore) return null;
+    return query(collection(firestore, "expenses"), where("companyId", "==", companyId));
+  }, [firestore, companyId]);
 
   const { data: invoices, isLoading: isLoadingInvoices } = useCollection<Omit<Invoice, 'id'>>(invoicesCollectionRef);
   const { data: expenses, isLoading: isLoadingExpenses } = useCollection<Omit<Expense, 'id'>>(expensesCollectionRef);
 
   const onGenerate = async () => {
-    if (!user) {
-        toast({
-            variant: "destructive",
-            title: "Erreur",
-            description: "Vous devez être connecté pour générer un rapport.",
-        });
-        return;
+    if (!companyId) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: "Vous devez être connecté pour générer un rapport.",
+      });
+      return;
     }
 
     if (!invoices || !expenses) {
-        toast({
-            title: "Données en cours de chargement",
-            description: "Veuillez patienter pendant que nous chargeons vos données financières.",
-        });
-        return;
+      toast({
+        title: "Données en cours de chargement",
+        description: "Veuillez patienter pendant que nous chargeons vos données financières.",
+      });
+      return;
     }
 
     setIsLoading(true);
     setReport(null);
 
     try {
-        if (invoices.length === 0 && expenses.length === 0) {
-            setReport("Aucune donnée de facture ou de dépense n'a été trouvée. Veuillez d'abord ajouter des données pour générer un rapport.");
-            setIsLoading(false);
-            return;
-        }
-
-        const result = await generateFinancialReport({
-            invoices: JSON.stringify(invoices),
-            expenses: JSON.stringify(expenses),
-        });
-        setReport(result.report);
-    } catch (error) {
-        console.error("Error generating report:", error);
-        toast({
-            variant: "destructive",
-            title: "Erreur de génération",
-            description: "Impossible de générer le rapport. Veuillez réessayer.",
-        });
-    } finally {
+      if (invoices.length === 0 && expenses.length === 0) {
+        setReport("Aucune donnée de facture ou de dépense n'a été trouvée. Veuillez d'abord ajouter des données pour générer un rapport.");
         setIsLoading(false);
+        return;
+      }
+
+      const result = await generateFinancialReport({
+        invoices: JSON.stringify(invoices),
+        expenses: JSON.stringify(expenses),
+      });
+      setReport(result.report);
+    } catch (error) {
+      console.error("Error generating report:", error);
+      toast({
+        variant: "destructive",
+        title: "Erreur de génération",
+        description: "Impossible de générer le rapport. Veuillez réessayer.",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -97,10 +99,10 @@ export default function ReportsPage() {
                 Génération en cours...
               </>
             ) : isDataLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Chargement des données...
-                </>
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Chargement des données...
+              </>
             ) : (
               <>
                 <Wand2 className="mr-2 h-4 w-4" />
