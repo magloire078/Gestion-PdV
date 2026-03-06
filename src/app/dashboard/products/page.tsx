@@ -60,6 +60,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DataService } from "@/lib/data-service";
 import { Product, db } from "@/lib/db";
 import { useProfile } from "@/hooks/use-profile";
+import type { Company, PointOfSale } from "@/lib/types";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { Loader2 } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -79,6 +80,7 @@ const EMPTY_FORM = {
     price: "",
     category: "Divers",
     stock: "0",
+    stockByPos: {} as Record<string, string>,
     minStock: "5",
     barcode: "",
     imageUrl: "",
@@ -99,7 +101,14 @@ export default function ProductsPage() {
         [company?.id]
     );
 
-    const isLoading = isAuthLoading || isProfileLoading || products === undefined;
+    const posQuery = useMemoFirebase(() => {
+        if (!company?.id || !firestore) return null;
+        return query(collection(firestore, "pointsOfSale"), where("companyId", "==", company.id));
+    }, [firestore, company?.id]);
+
+    const { data: pointsOfSale, isLoading: isPosLoading } = useCollection<PointOfSale>(posQuery);
+
+    const isLoading = isAuthLoading || isProfileLoading || isPosLoading || products === undefined;
 
     const filtered = useMemo(() => {
         if (!products) return [];
@@ -130,12 +139,26 @@ export default function ProductsPage() {
         });
 
         try {
+            // If stockType is per-pos, calculate total stock from stockByPos
+            let calculatedStock = parseInt(data.stock) || 0;
+            const parsedStockByPos: Record<string, number> = {};
+            if (company.stockType === 'per-pos' && data.stockByPos) {
+                let total = 0;
+                Object.entries(data.stockByPos).forEach(([posId, qty]) => {
+                    const parsedQty = parseInt(qty as string) || 0;
+                    parsedStockByPos[posId] = parsedQty;
+                    total += parsedQty;
+                });
+                calculatedStock = total;
+            }
+
             const productData = {
                 name: data.name.trim(),
                 companyId: company.id,
                 price: parseFloat(data.price) || 0,
                 category: data.category,
-                stock: parseInt(data.stock) || 0,
+                stock: calculatedStock,
+                stockByPos: company.stockType === 'per-pos' ? parsedStockByPos : undefined,
                 minStock: parseInt(data.minStock) || 0,
                 barcode: (data.barcode || "").trim(),
                 imageUrl: (data.imageUrl || "").trim(),
@@ -166,15 +189,28 @@ export default function ProductsPage() {
         if (!editingProduct || !user) return;
 
         try {
-            const productData = {
+            // Calculate total stock if per-pos
+            let calculatedStock = parseInt(data.stock) || 0;
+            const parsedStockByPos: Record<string, number> = {};
+            if (company?.stockType === 'per-pos' && data.stockByPos) {
+                let total = 0;
+                Object.entries(data.stockByPos).forEach(([posId, qty]) => {
+                    const parsedQty = parseInt(qty as string) || 0;
+                    parsedStockByPos[posId] = parsedQty;
+                    total += parsedQty;
+                });
+                calculatedStock = total;
+            }
+
+            const productData: Partial<Product> = {
                 name: data.name.trim(),
                 price: parseFloat(data.price) || 0,
                 category: data.category,
-                stock: parseInt(data.stock) || 0,
+                stock: calculatedStock,
+                stockByPos: company?.stockType === 'per-pos' ? parsedStockByPos : undefined,
                 minStock: parseInt(data.minStock) || 0,
                 barcode: (data.barcode || "").trim(),
                 imageUrl: (data.imageUrl || "").trim(),
-                updatedAt: new Date().toISOString(),
             };
 
             console.log("Updating product locally first...");
@@ -234,6 +270,8 @@ export default function ProductsPage() {
                     open={isAddDialogOpen}
                     onOpenChange={setIsAddDialogOpen}
                     onSubmit={handleAdd}
+                    company={company}
+                    pointsOfSale={pointsOfSale || []}
                 />
             </div>
 
@@ -430,6 +468,8 @@ export default function ProductsPage() {
                 open={!!editingProduct}
                 onOpenChange={(open) => !open && setEditingProduct(null)}
                 onSubmit={handleEdit}
+                company={company}
+                pointsOfSale={pointsOfSale || []}
             />
 
             {/* Delete Confirmation */}
@@ -453,12 +493,14 @@ export default function ProductsPage() {
     );
 }
 
-function ProductDialog({ mode, product, open, onOpenChange, onSubmit }: {
+function ProductDialog({ mode, product, open, onOpenChange, onSubmit, company, pointsOfSale }: {
     mode: "add" | "edit";
     product?: Product | null;
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onSubmit: (data: any) => Promise<void>;
+    company: Company | null;
+    pointsOfSale: PointOfSale[];
 }) {
     const [localData, setLocalData] = useState(EMPTY_FORM);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -467,11 +509,19 @@ function ProductDialog({ mode, product, open, onOpenChange, onSubmit }: {
     useEffect(() => {
         if (open) {
             if (mode === "edit" && product) {
+                // Initialize stockByPos strings from numbers
+                const initialStockByPos: Record<string, string> = {};
+                if (company?.stockType === 'per-pos' && product.stockByPos) {
+                    Object.entries(product.stockByPos).forEach(([posId, qty]) => {
+                        initialStockByPos[posId] = String(qty);
+                    });
+                }
                 setLocalData({
                     name: product.name,
                     price: String(product.price),
                     category: product.category,
                     stock: String(product.stock),
+                    stockByPos: initialStockByPos,
                     minStock: String(product.minStock || 5),
                     barcode: product.barcode || "",
                     imageUrl: product.imageUrl || "",
@@ -560,14 +610,32 @@ function ProductDialog({ mode, product, open, onOpenChange, onSubmit }: {
                                 {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="stock" className="text-right">Stock</Label>
-                            <Input
-                                id="stock" type="number" min="0" className="col-span-3" required
-                                value={localData.stock}
-                                onChange={(e) => setLocalData(d => ({ ...d, stock: e.target.value }))}
-                            />
-                        </div>
+                        {company?.stockType === 'per-pos' ? (
+                            pointsOfSale.map(pos => (
+                                <div key={pos.id} className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor={`stock-${pos.id}`} className="text-right whitespace-nowrap overflow-hidden text-ellipsis" title={`Stock - ${pos.name}`}>
+                                        Stock ({pos.name})
+                                    </Label>
+                                    <Input
+                                        id={`stock-${pos.id}`} type="number" min="0" className="col-span-3"
+                                        value={localData.stockByPos[pos.id] || "0"}
+                                        onChange={(e) => setLocalData(d => ({
+                                            ...d,
+                                            stockByPos: { ...d.stockByPos, [pos.id]: e.target.value }
+                                        }))}
+                                    />
+                                </div>
+                            ))
+                        ) : (
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="stock" className="text-right">Stock Global</Label>
+                                <Input
+                                    id="stock" type="number" min="0" className="col-span-3" required
+                                    value={localData.stock}
+                                    onChange={(e) => setLocalData(d => ({ ...d, stock: e.target.value }))}
+                                />
+                            </div>
+                        )}
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="minStock" className="text-right">Seuil d'alerte</Label>
                             <Input

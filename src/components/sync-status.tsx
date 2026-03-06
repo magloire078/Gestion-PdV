@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { CloudOff, CloudUpload, CheckCircle2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { useProfile } from "@/hooks/use-profile";
+import { useLiveQuery } from "dexie-react-hooks";
 
 export function SyncStatus() {
     const [isOnline, setIsOnline] = useState(true);
-    const [pendingCount, setPendingCount] = useState(0);
     const { company } = useProfile();
 
     useEffect(() => {
@@ -27,31 +27,24 @@ export function SyncStatus() {
         };
     }, []);
 
-    useEffect(() => {
-        if (!company?.id) return;
+    const pendingCount = useLiveQuery(async () => {
+        if (!company?.id) return 0;
+        try {
+            const pendingProducts = await db.products
+                .where('synced').equals(0)
+                .and(p => p.companyId === company.id)
+                .count();
+            const pendingSales = await db.sales
+                .where('synced').equals(0)
+                .and(s => s.companyId === company.id)
+                .count();
 
-        const checkPendingItems = async () => {
-            try {
-                const pendingProducts = await db.products
-                    .where('synced').equals(0)
-                    .and(p => p.companyId === company.id)
-                    .count();
-                const pendingSales = await db.sales
-                    .where('synced').equals(0)
-                    .and(s => s.companyId === company.id)
-                    .count();
-
-                setPendingCount(pendingProducts + pendingSales);
-            } catch (error) {
-                console.error("Failed to check pending sync items", error);
-            }
-        };
-
-        checkPendingItems();
-        const interval = setInterval(checkPendingItems, 2000);
-
-        return () => clearInterval(interval);
-    }, [company?.id]);
+            return pendingProducts + pendingSales;
+        } catch (error) {
+            console.error("Failed to check pending sync items", error);
+            return 0;
+        }
+    }, [company?.id], 0);
 
     if (!isOnline) {
         return (

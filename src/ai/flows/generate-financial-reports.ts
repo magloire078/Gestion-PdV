@@ -8,12 +8,13 @@
  * - GenerateFinancialReportOutput - The return type for the generateFinancialReport function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { ai } from '@/ai/genkit';
+import { z } from 'genkit';
 
 const GenerateFinancialReportInputSchema = z.object({
   invoices: z.string().describe('A JSON string of all invoices.'),
   expenses: z.string().describe('A JSON string of all expenses.'),
+  sales: z.string().describe('A JSON string of all point-of-sale transactions.').optional(),
 });
 export type GenerateFinancialReportInput = z.infer<typeof GenerateFinancialReportInputSchema>;
 
@@ -28,16 +29,17 @@ export async function generateFinancialReport(input: GenerateFinancialReportInpu
 
 const prompt = ai.definePrompt({
   name: 'generateFinancialReportPrompt',
-  input: {schema: GenerateFinancialReportInputSchema},
-  output: {schema: GenerateFinancialReportOutputSchema},
-  prompt: `You are an expert financial analyst. Generate a financial report based on the provided invoices and expenses.
+  input: { schema: GenerateFinancialReportInputSchema },
+  output: { schema: GenerateFinancialReportOutputSchema },
+  prompt: `You are an expert financial analyst. Generate a financial report based on the provided invoices, expenses and point-of-sale transactions.
 
 Invoices: {{{invoices}}}
 Expenses: {{{expenses}}}
+Sales (POS): {{{sales}}}
 
 Analyze the data and provide a comprehensive report formatted as an HTML string. The report must include:
 - A main title (e.g., <h2>Rapport Financier</h2>).
-- Sections for "Résumé", "Analyse des Revenus", "Analyse des Dépenses", and "Recommandations" using <h3> for subtitles.
+- Sections for "Résumé", "Analyse des Revenus (B2B et POS)", "Analyse des Dépenses", and "Recommandations" using <h3> for subtitles.
 - Key metrics (Total Income, Total Expenses, Net Profit/Loss) presented clearly, perhaps in a list (<ul>) or with bold tags (<strong>).
 - Key observations, trends, and actionable recommendations for improving profitability and reducing expenses, presented as bullet points in unordered lists (<ul><li>...</li></ul>).
 
@@ -52,7 +54,7 @@ const generateFinancialReportFlow = ai.defineFlow(
     outputSchema: GenerateFinancialReportOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
+    const { output } = await prompt(input);
     return output!;
   }
 );

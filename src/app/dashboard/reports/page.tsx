@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { useProfile } from "@/hooks/use-profile";
 import { collection, query, where } from "firebase/firestore";
-import type { Invoice, Expense } from "@/lib/types";
+import type { Invoice, Expense, Sale } from "@/lib/types";
 
 export default function ReportsPage() {
   const [report, setReport] = useState<string | null>(null);
@@ -29,8 +29,14 @@ export default function ReportsPage() {
     return query(collection(firestore, "expenses"), where("companyId", "==", companyId));
   }, [firestore, companyId]);
 
+  const salesCollectionRef = useMemoFirebase(() => {
+    if (!companyId || !firestore) return null;
+    return query(collection(firestore, "sales"), where("companyId", "==", companyId));
+  }, [firestore, companyId]);
+
   const { data: invoices, isLoading: isLoadingInvoices } = useCollection<Omit<Invoice, 'id'>>(invoicesCollectionRef);
   const { data: expenses, isLoading: isLoadingExpenses } = useCollection<Omit<Expense, 'id'>>(expensesCollectionRef);
+  const { data: sales, isLoading: isLoadingSales } = useCollection<Omit<Sale, 'id'>>(salesCollectionRef);
 
   const onGenerate = async () => {
     if (!companyId) {
@@ -63,6 +69,7 @@ export default function ReportsPage() {
       const result = await generateFinancialReport({
         invoices: JSON.stringify(invoices),
         expenses: JSON.stringify(expenses),
+        sales: JSON.stringify(sales || []),
       });
       setReport(result.report);
     } catch (error) {
@@ -77,7 +84,7 @@ export default function ReportsPage() {
     }
   };
 
-  const isDataLoading = isLoadingInvoices || isLoadingExpenses;
+  const isDataLoading = isLoadingInvoices || isLoadingExpenses || isLoadingSales;
 
   return (
     <div className="flex flex-col gap-6">

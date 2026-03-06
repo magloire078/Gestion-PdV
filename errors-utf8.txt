@@ -1,0 +1,3 @@
+﻿src/app/dashboard/page.tsx(87,11): error TS2367: This comparison appears to be unintentional because the types 'UserRole | undefined' and '"cashier"' have no overlap.
+src/app/dashboard/products/page.tsx(214,17): error TS2353: Object literal may only specify known properties, and 'updatedAt' does not exist in type 'Partial<Product>'.
+src/components/dashboard/overview-chart.tsx(40,105): error TS2339: Property 'date' does not exist on type 'Omit<Sale, "id">'.

@@ -42,7 +42,7 @@ import { collection, doc, query, where, getDocs, limit } from "firebase/firestor
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProfile } from "@/hooks/use-profile";
-import type { UserProfile } from "@/lib/types";
+import type { UserProfile, PointOfSale } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 
 export default function EmployeesPage() {
@@ -50,6 +50,8 @@ export default function EmployeesPage() {
     const [email, setEmail] = useState("");
     const [role, setRole] = useState<"employee" | "owner">("employee");
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const [assignedPosId, setAssignedPosId] = useState<string>("all");
 
     const { company, profile, isLoading: isProfileLoading } = useProfile();
     const firestore = useFirestore();
@@ -60,7 +62,13 @@ export default function EmployeesPage() {
         return query(collection(firestore, "users"), where("companyId", "==", company.id));
     }, [firestore, company?.id]);
 
+    const posQuery = useMemoFirebase(() => {
+        if (!company?.id || !firestore) return null;
+        return query(collection(firestore, "pointsOfSale"), where("companyId", "==", company.id));
+    }, [firestore, company?.id]);
+
     const { data: employees, isLoading: isCollectionLoading } = useCollection<UserProfile>(employeesQuery);
+    const { data: pointsOfSale } = useCollection<PointOfSale>(posQuery);
     const isLoading = isProfileLoading || isCollectionLoading;
 
     const handleAddEmployee = async (e: React.FormEvent) => {
@@ -99,7 +107,8 @@ export default function EmployeesPage() {
             const userRef = doc(firestore, "users", userDoc.id);
             await updateDocumentNonBlocking(userRef, {
                 companyId: company.id,
-                role: role
+                role: role,
+                assignedPosId: role === 'owner' ? null : (assignedPosId === 'all' ? null : assignedPosId)
             });
 
             toast({
@@ -108,6 +117,7 @@ export default function EmployeesPage() {
             });
             setIsAddDialogOpen(false);
             setEmail("");
+            setAssignedPosId("all");
         } catch (error) {
             console.error("Error adding employee:", error);
             toast({
@@ -127,7 +137,8 @@ export default function EmployeesPage() {
             const userRef = doc(firestore, "users", employeeId);
             await updateDocumentNonBlocking(userRef, {
                 companyId: null,
-                role: 'employee' // Reset to default
+                role: 'employee', // Reset to default
+                assignedPosId: null
             });
 
             toast({
@@ -206,6 +217,22 @@ export default function EmployeesPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                {role === 'employee' && (
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="pos">Point de Vente Assigné</Label>
+                                        <Select value={assignedPosId} onValueChange={setAssignedPosId}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Sélectionner un point de vente" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">Tous les points de vente</SelectItem>
+                                                {pointsOfSale?.map(pos => (
+                                                    <SelectItem key={pos.id} value={pos.id}>{pos.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
                             </div>
                             <DialogFooter>
                                 <Button type="submit" disabled={isSubmitting}>
@@ -230,6 +257,7 @@ export default function EmployeesPage() {
                             <TableRow>
                                 <TableHead>Utilisateur</TableHead>
                                 <TableHead>Rôle</TableHead>
+                                <TableHead>Point de Vente</TableHead>
                                 <TableHead>Date d'ajout</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
@@ -240,6 +268,7 @@ export default function EmployeesPage() {
                                     <TableRow key={i}>
                                         <TableCell><Skeleton className="h-4 w-40" /></TableCell>
                                         <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                                         <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                                         <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
                                     </TableRow>
@@ -267,6 +296,9 @@ export default function EmployeesPage() {
                                                     </div>
                                                 )}
                                             </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-sm text-muted-foreground">
+                                            {emp.role === 'owner' ? 'Tous' : (emp.assignedPosId ? pointsOfSale?.find(p => p.id === emp.assignedPosId)?.name || 'Inconnu' : 'Tous (Non assigné)')}
                                         </TableCell>
                                         <TableCell className="text-sm text-muted-foreground">
                                             {emp.createdAt ? new Date(emp.createdAt).toLocaleDateString('fr-FR') : 'N/A'}

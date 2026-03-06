@@ -5,14 +5,15 @@ import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recha
 import { formatCurrency } from "@/lib/utils";
 import { eachMonthOfInterval, subMonths, format, startOfMonth } from "date-fns";
 import { fr } from 'date-fns/locale';
-import type { Invoice, Expense } from "@/lib/types";
+import type { Invoice, Expense, Sale } from "@/lib/types";
 
 interface OverviewChartProps {
-    invoices: (Omit<Invoice, 'id'>)[];
-    expenses: (Omit<Expense, 'id'>)[];
+  invoices: (Omit<Invoice, 'id'>)[];
+  expenses: (Omit<Expense, 'id'>)[];
+  sales?: (Omit<Sale, 'id'>)[];
 }
 
-export function OverviewChart({ invoices, expenses }: OverviewChartProps) {
+export function OverviewChart({ invoices, expenses, sales = [] }: OverviewChartProps) {
   const data = useMemo(() => {
     const sixMonthsAgo = subMonths(new Date(), 5);
     const months = eachMonthOfInterval({
@@ -27,23 +28,30 @@ export function OverviewChart({ invoices, expenses }: OverviewChartProps) {
     }));
 
     invoices.forEach(invoice => {
-        if (invoice.status === 'Payée') {
-            const monthIndex = months.findIndex(m => startOfMonth(m).getTime() === startOfMonth(new Date(invoice.issueDate)).getTime());
-            if (monthIndex !== -1) {
-                monthlyData[monthIndex].revenue += invoice.amount;
-            }
+      if (invoice.status === 'Payée') {
+        const monthIndex = months.findIndex(m => startOfMonth(m).getTime() === startOfMonth(new Date(invoice.issueDate)).getTime());
+        if (monthIndex !== -1) {
+          monthlyData[monthIndex].revenue += invoice.amount;
         }
+      }
+    });
+
+    sales.forEach(sale => {
+      const monthIndex = months.findIndex(m => startOfMonth(m).getTime() === startOfMonth(new Date(sale.timestamp)).getTime());
+      if (monthIndex !== -1) {
+        monthlyData[monthIndex].revenue += sale.total;
+      }
     });
 
     expenses.forEach(expense => {
-        const monthIndex = months.findIndex(m => startOfMonth(m).getTime() === startOfMonth(new Date(expense.date)).getTime());
-        if (monthIndex !== -1) {
-            monthlyData[monthIndex].expenses += expense.amount;
-        }
+      const monthIndex = months.findIndex(m => startOfMonth(m).getTime() === startOfMonth(new Date(expense.date)).getTime());
+      if (monthIndex !== -1) {
+        monthlyData[monthIndex].expenses += expense.amount;
+      }
     });
 
     return monthlyData;
-  }, [invoices, expenses]);
+  }, [invoices, expenses, sales]);
 
 
   return (
@@ -64,13 +72,13 @@ export function OverviewChart({ invoices, expenses }: OverviewChartProps) {
           tickFormatter={(value) => formatCurrency(value as number).replace('F\u202FCFA', 'F CFA')}
         />
         <Tooltip
-            contentStyle={{
-                background: "hsl(var(--card))",
-                borderColor: "hsl(var(--border))",
-                borderRadius: "var(--radius)",
-            }}
-            cursor={{ fill: 'hsl(var(--muted))' }}
-            formatter={(value) => formatCurrency(value as number)}
+          contentStyle={{
+            background: "hsl(var(--card))",
+            borderColor: "hsl(var(--border))",
+            borderRadius: "var(--radius)",
+          }}
+          cursor={{ fill: 'hsl(var(--muted))' }}
+          formatter={(value) => formatCurrency(value as number)}
         />
         <Bar
           dataKey="revenue"

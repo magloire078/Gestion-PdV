@@ -35,6 +35,7 @@ export interface UserProfile {
   email: string;
   displayName?: string;
   companyId: string; // Only empty for superadmins potentially
+  assignedPosId?: string; // Point of Sale assigned to this user
   role: UserRole;
   createdAt: string;
 }
@@ -45,7 +46,8 @@ export interface Product {
   name: string;
   price: number;
   category: string;
-  stock: number;
+  stock: number; // Global stock
+  stockByPos?: Record<string, number>; // Local stock per POS if stockType === 'per-pos'
   minStock: number; // Low stock alert threshold
   barcode?: string;
   imageUrl?: string;
@@ -62,16 +64,40 @@ export interface StockMovement {
   date: string;
 }
 
+export interface Sale {
+  id: string;
+  companyId: string;
+  posId?: string;
+  cashierId?: string;
+  items: {
+    productId: string;
+    name: string;
+    quantity: number;
+    price: number;
+  }[];
+  total: number;
+  timestamp: number;
+}
+
 export interface Company {
   id: string;
   name: string;
   ownerId: string;
   subscriptionStatus: 'trial' | 'active' | 'inactive';
   subscriptionEndDate: string;
+  stockType?: 'global' | 'per-pos'; // Stock management preference
   createdAt: string;
   address?: string;
   phone?: string;
   contactEmail?: string;
   taxId?: string;
   logoUrl?: string;
+}
+
+export interface PointOfSale {
+  id: string;
+  companyId: string;
+  name: string;
+  location?: string;
+  createdAt: string;
 }

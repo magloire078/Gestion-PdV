@@ -51,7 +51,10 @@ export class DataService {
     }
 
     static async saveProduct(productData: Omit<Product, 'id' | 'synced'>): Promise<string> {
-        const id = crypto.randomUUID();
+        const firestore = this.getFirestoreInstance();
+        const productsCol = collection(firestore, 'products');
+        const id = doc(productsCol).id;
+
         const product: Product = {
             ...productData,
             id,
@@ -107,8 +110,13 @@ export class DataService {
     }
 
     static async saveSale(saleData: Omit<Sale, 'id' | 'synced'>): Promise<void> {
+        const firestore = this.getFirestoreInstance();
+        const salesCol = collection(firestore, 'sales');
+        const id = doc(salesCol).id;
+
         const sale: Sale = {
             ...saleData,
+            id,
             synced: 0
         };
 
@@ -136,16 +144,19 @@ export class DataService {
                 for (const sale of pendingSales) {
                     try {
                         const { id, ...saleToSync } = sale;
-                        await addDoc(salesCol, {
-                            ...saleToSync,
-                            timestamp: Timestamp.fromMillis(sale.timestamp),
-                            synced: 1
-                        });
 
-                        // Mark as synced locally
+                        // Use setDoc to maintain the same ID between Dexie and Firestore
                         if (id) {
+                            const docRef = doc(salesCol, id);
+                            await setDoc(docRef, {
+                                ...saleToSync,
+                                timestamp: Timestamp.fromMillis(sale.timestamp),
+                                synced: 1
+                            });
+
+                            // Mark as synced locally
                             await db.sales.update(id, { synced: 1 });
-                            console.log('Synced sale to Firestore, local ID:', id);
+                            console.log('Synced sale to Firestore, local/cloud ID:', id);
                         }
                     } catch (error) {
                         console.error('Failed to sync sale:', sale.id, error);
@@ -194,5 +205,34 @@ export class DataService {
                 console.error('Failed to delete product from Firestore:', error);
             }
         }
+    }
+
+    // --- POS Administration ---
+    static async getPointsOfSale(companyId: string) {
+        if (typeof window === 'undefined') return [];
+        const firestore = this.getFirestoreInstance();
+        const posCol = collection(firestore, 'pointsOfSale');
+        const q = query(posCol, where('companyId', '==', companyId));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    }
+
+    static async createPointOfSale(posData: any): Promise<string> {
+        const firestore = this.getFirestoreInstance();
+        const posCol = collection(firestore, 'pointsOfSale');
+        const docRef = await addDoc(posCol, posData);
+        return docRef.id;
+    }
+
+    static async updatePointOfSale(posId: string, posData: any): Promise<void> {
+        const firestore = this.getFirestoreInstance();
+        const posRef = doc(firestore, 'pointsOfSale', posId);
+        await updateDoc(posRef, posData);
+    }
+
+    static async deletePointOfSale(posId: string): Promise<void> {
+        const firestore = this.getFirestoreInstance();
+        const posRef = doc(firestore, 'pointsOfSale', posId);
+        await deleteDoc(posRef);
     }
 }

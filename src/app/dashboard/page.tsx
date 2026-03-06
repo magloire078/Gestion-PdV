@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Card,
   CardContent,
@@ -13,9 +13,11 @@ import { useUser, useFirestore, useCollection, useMemoFirebase, useFirebase } fr
 import { collection, query, orderBy, limit, where } from "firebase/firestore";
 import { useProfile } from "@/hooks/use-profile";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Invoice, Expense, Product } from "@/lib/types";
+import type { Invoice, Expense, Product, Sale, PointOfSale, UserProfile } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { AlertCircle, ArrowRight, ShoppingCart, DollarSign, ArrowUpRight, ArrowDownRight, Scale } from "lucide-react";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
 import Link from "next/link";
@@ -24,7 +26,9 @@ import { format } from "date-fns";
 
 export default function DashboardPage() {
   const { firestore } = useFirebase();
-  const { company, isLoading: isProfileLoading } = useProfile();
+  const { profile, company, isLoading: isProfileLoading } = useProfile();
+  const [selectedPosId, setSelectedPosId] = useState<string>("all");
+  const [selectedCashierId, setSelectedCashierId] = useState<string>("all");
 
   const invoicesQuery = useMemoFirebase(() => {
     if (!company?.id || !firestore) return null;
@@ -46,23 +50,58 @@ export default function DashboardPage() {
     return query(collection(firestore, "products"), where("companyId", "==", company.id));
   }, [firestore, company?.id]);
 
+  const salesQuery = useMemoFirebase(() => {
+    if (!company?.id || !firestore) return null;
+    return query(collection(firestore, "sales"), where("companyId", "==", company.id));
+  }, [firestore, company?.id]);
+
+  const posQuery = useMemoFirebase(() => {
+    if (!company?.id || !firestore) return null;
+    return query(collection(firestore, "pointsOfSale"), where("companyId", "==", company.id));
+  }, [firestore, company?.id]);
+
+  const usersQuery = useMemoFirebase(() => {
+    if (!company?.id || !firestore) return null;
+    return query(collection(firestore, "users"), where("companyId", "==", company.id));
+  }, [firestore, company?.id]);
+
   const { data: allInvoices, isLoading: isLoadingAllInvoices } = useCollection<Invoice>(allInvoicesQuery);
   const { data: recentInvoices, isLoading: isLoadingRecentInvoices } = useCollection<Invoice>(invoicesQuery);
   const { data: expenses, isLoading: isLoadingExpenses } = useCollection<Expense>(expensesQuery);
   const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(productsQuery);
+  const { data: sales, isLoading: isLoadingSales } = useCollection<Sale>(salesQuery);
+  const { data: posList, isLoading: isLoadingPos } = useCollection<PointOfSale>(posQuery);
+  const { data: usersList, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersQuery);
 
-  const isLoading = isProfileLoading || isLoadingAllInvoices || isLoadingRecentInvoices || isLoadingExpenses || isLoadingProducts;
+  const isLoading = isProfileLoading || isLoadingAllInvoices || isLoadingRecentInvoices || isLoadingExpenses || isLoadingProducts || isLoadingSales || isLoadingPos || isLoadingUsers;
 
   const lowStockProducts = useMemo(() => {
     if (!products) return [];
     return products.filter(p => p.stock <= (p.minStock || 5));
   }, [products]);
 
-  const totalRevenue = useMemo(() =>
-    allInvoices
+  const filteredSales = useMemo(() => {
+    if (!sales) return [];
+    return sales.filter(s => {
+      // If user is a cashier, force filter by their assigned POS and ID
+      if (profile?.role === 'employee') {
+        if (s.posId !== profile.assignedPosId) return false;
+        if (s.cashierId !== profile.id) return false;
+      } else {
+        if (selectedPosId !== 'all' && s.posId !== selectedPosId) return false;
+        if (selectedCashierId !== 'all' && s.cashierId !== selectedCashierId) return false;
+      }
+      return true;
+    });
+  }, [sales, selectedPosId, selectedCashierId, profile]);
+
+  const totalRevenue = useMemo(() => {
+    const invoiceRevenue = allInvoices
       ?.filter((invoice) => invoice.status === "Payée")
-      .reduce((sum, invoice) => sum + invoice.amount, 0) ?? 0
-    , [allInvoices]);
+      .reduce((sum, invoice) => sum + invoice.amount, 0) ?? 0;
+    const posRevenue = filteredSales?.reduce((sum, sale) => sum + sale.total, 0) ?? 0;
+    return invoiceRevenue + posRevenue;
+  }, [allInvoices, filteredSales]);
 
   const totalExpenses = useMemo(() =>
     expenses?.reduce((sum, expense) => sum + expense.amount, 0) ?? 0
@@ -132,7 +171,41 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Tableau de bord</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Tableau de bord</h1>
+        {(profile?.role === 'owner' || profile?.role === 'superadmin') && (
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="pos-filter" className="whitespace-nowrap">Point de Vente:</Label>
+              <Select value={selectedPosId} onValueChange={setSelectedPosId}>
+                <SelectTrigger id="pos-filter" className="w-[180px]">
+                  <SelectValue placeholder="Tous les PdV" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les PdV</SelectItem>
+                  {posList?.map(pos => (
+                    <SelectItem key={pos.id} value={pos.id}>{pos.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="cashier-filter" className="whitespace-nowrap">Caissier:</Label>
+              <Select value={selectedCashierId} onValueChange={setSelectedCashierId}>
+                <SelectTrigger id="cashier-filter" className="w-[180px]">
+                  <SelectValue placeholder="Tous les caissiers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les caissiers</SelectItem>
+                  {usersList?.map(user => (
+                    <SelectItem key={user.id} value={user.id}>{user.displayName ?? user.email}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+      </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {kpiData.map((kpi) => (
           <Card key={kpi.title}>
@@ -155,7 +228,7 @@ export default function DashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <OverviewChart invoices={allInvoices ?? []} expenses={expenses ?? []} />
+          <OverviewChart invoices={allInvoices ?? []} expenses={expenses ?? []} sales={filteredSales ?? []} />
         </CardContent>
       </Card>
 

@@ -9,13 +9,16 @@ export interface Product {
     imageUrl?: string;
     barcode?: string;
     stock: number;
+    stockByPos?: Record<string, number>;
     minStock?: number;
     synced: number; // 0 or 1
 }
 
 export interface Sale {
-    id?: number;
+    id: string;
     companyId: string;
+    posId?: string; // Point of Sale where the sale occurred
+    cashierId?: string; // User who made the sale
     items: {
         productId: string;
         name: string;
@@ -33,9 +36,9 @@ export class POSDatabase extends Dexie {
 
     constructor() {
         super('POSDatabase');
-        this.version(3).stores({
+        this.version(5).stores({
             products: 'id, companyId, name, category, barcode, synced',
-            sales: '++id, companyId, timestamp, synced'
+            sales: 'id, companyId, posId, cashierId, timestamp, synced'
         });
     }
 }

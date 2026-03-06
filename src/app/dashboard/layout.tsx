@@ -18,6 +18,7 @@ import {
   Users,
   Warehouse,
   History,
+  Store,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -49,7 +50,8 @@ const navItems = [
   { href: "/dashboard/stocks", icon: Warehouse, label: "Gestion des Stocks" },
   { href: "/dashboard/movements", icon: History, label: "Mouvements" },
   { href: "/dashboard/employees", icon: Users, label: "Employés", roles: ['owner', 'superadmin'] },
-  { href: "/dashboard/reports", icon: LineChart, label: "Rapports & Stats" },
+  { href: "/dashboard/pos-management", icon: Store, label: "Points de Vente", roles: ['owner', 'superadmin'] },
+  { href: "/dashboard/reports", icon: LineChart, label: "Rapports & Stats", roles: ['owner', 'superadmin'] },
   { href: "/admin", icon: Settings, label: "Admin Système", roles: ['superadmin'] },
   { href: "/dashboard/settings", icon: Settings, label: "Paramètres" },
 ];

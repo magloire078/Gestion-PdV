@@ -7,6 +7,9 @@ import { useProfile } from '@/hooks/use-profile';
 import { DataService } from '@/lib/data-service';
 import { SyncEngine } from '@/lib/sync-engine';
 import { Product, db } from '@/lib/db';
+import type { PointOfSale } from '@/lib/types';
+import { useFirebase, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { query, collection, where } from 'firebase/firestore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -25,21 +28,45 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import Image from 'next/image';
 
 import { Logo } from '@/components/logo';
 
 function POSPageContent() {
-    const { company, isLoading: isProfileLoading } = useProfile();
+    const { company, profile, isLoading: isProfileLoading } = useProfile();
+    const firestore = useFirestore();
     const products = useLiveQuery(() =>
         company ? db.products.where('companyId').equals(company.id).toArray() : [],
         [company?.id]
     ) || [];
 
+    const posQuery = useMemoFirebase(() => {
+        if (!company?.id || !firestore) return null;
+        return query(collection(firestore, "pointsOfSale"), where("companyId", "==", company.id));
+    }, [firestore, company?.id]);
+    const { data: pointsOfSale } = useCollection<PointOfSale>(posQuery);
+
     const { toast } = useToast();
     const [search, setSearch] = useState('');
     const [isOnline, setIsOnline] = useState(true);
+    const [selectedPosId, setSelectedPosId] = useState<string | null>(null);
     const { cart, addItem, removeItem, updateQuantity, total, clearCart } = usePOSStore();
+
+    useEffect(() => {
+        if (profile?.assignedPosId) {
+            setSelectedPosId(profile.assignedPosId);
+        } else if (pointsOfSale && pointsOfSale.length === 1 && !selectedPosId) {
+            setSelectedPosId(pointsOfSale[0].id);
+        }
+    }, [profile?.assignedPosId, pointsOfSale]);
 
     useEffect(() => {
         if (isProfileLoading || !company) return;
@@ -97,17 +124,31 @@ function POSPageContent() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [products, addItem]);
 
-    const filteredProducts = products.filter(p =>
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.category.toLowerCase().includes(search.toLowerCase()) ||
-        (p.barcode && p.barcode.includes(search))
-    );
+    const filteredProducts = products.filter(p => {
+        const searchTerms = search.toLowerCase().split(/\s+/).filter(Boolean);
+        if (searchTerms.length === 0) return true;
+
+        const searchableText = `${p.name} ${p.category} ${p.barcode || ''}`.toLowerCase();
+
+        return searchTerms.every(term => searchableText.includes(term));
+    });
 
     const handleCheckout = async () => {
         if (cart.length === 0 || !company) return;
 
+        if (!selectedPosId && company?.stockType === 'per-pos') {
+            toast({
+                title: 'Action requise',
+                description: 'Veuillez sélectionner un Point de Vente pour enregistrer la vente.',
+                variant: 'destructive'
+            });
+            return;
+        }
+
         const sale = {
             companyId: company.id,
+            posId: selectedPosId || undefined,
+            cashierId: profile?.id || undefined,
             items: cart.map(item => ({
                 productId: item.id,
                 name: item.name,
@@ -174,14 +215,34 @@ function POSPageContent() {
                         initial={{ x: -20, opacity: 0 }}
                         animate={{ x: 0, opacity: 1 }}
                     >
-                        <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-white to-neutral-500 bg-clip-text text-transparent uppercase">
-                            POINT DE VENTE (PdV)
-                        </h1>
-                        <p className="text-neutral-500 text-[10px] font-bold uppercase tracking-[0.3em]">Expérience de vente nouvelle génération</p>
+                        <div className="flex items-center gap-4">
+                            <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-white to-neutral-500 bg-clip-text text-transparent uppercase">
+                                POINT DE VENTE
+                            </h1>
+                            {(!profile?.assignedPosId && pointsOfSale && pointsOfSale.length > 0) && (
+                                <Select value={selectedPosId || ''} onValueChange={setSelectedPosId}>
+                                    <SelectTrigger className="w-[200px] h-8 bg-neutral-900 border-neutral-800 text-white rounded-xl">
+                                        <SelectValue placeholder="Sélectionner un PdV" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-neutral-900 border-neutral-800 text-white">
+                                        {pointsOfSale.map(pos => (
+                                            <SelectItem key={pos.id} value={pos.id} className="focus:bg-neutral-800 focus:text-white">{pos.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                            {profile?.assignedPosId && pointsOfSale?.find(p => p.id === profile.assignedPosId) && (
+                                <Badge variant="outline" className="text-xs bg-neutral-800 text-neutral-300 border-neutral-700">
+                                    {pointsOfSale?.find(p => p.id === profile.assignedPosId)?.name}
+                                </Badge>
+                            )}
+                        </div>
+                        <p className="text-neutral-500 text-[10px] font-bold uppercase tracking-[0.3em] mt-1">Expérience de vente nouvelle génération</p>
                     </motion.div>
                     <div className="relative w-96 group">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600 group-focus-within:text-indigo-500 transition-colors" size={18} />
                         <Input
+                            autoFocus
                             placeholder="Rechercher par nom ou catégorie..."
                             className="pl-12 bg-neutral-900/50 border-neutral-800 h-12 focus:ring-2 focus:ring-indigo-500/30 rounded-2xl transition-all placeholder:text-neutral-700"
                             value={search}
@@ -217,7 +278,14 @@ function POSPageContent() {
                                             </div>
                                         </div>
                                         <CardContent className="p-4">
-                                            <p className="text-sm font-medium text-neutral-300 mb-1">{product.category}</p>
+                                            <div className="flex justify-between items-start mb-1">
+                                                <p className="text-sm font-medium text-neutral-400">{product.category}</p>
+                                                <span className="text-xs text-neutral-500">
+                                                    Stock: {company?.stockType === 'per-pos' && selectedPosId
+                                                        ? (product.stockByPos?.[selectedPosId] || 0)
+                                                        : product.stock}
+                                                </span>
+                                            </div>
                                             <h3 className="font-semibold text-lg leading-tight mb-2 truncate">{product.name}</h3>
                                             <p className="text-indigo-400 font-bold text-xl">{product.price.toLocaleString()} FCFA</p>
                                         </CardContent>

@@ -42,6 +42,7 @@ const formSchema = z.object({
   phone: z.string().optional(),
   contactEmail: z.string().email("Adresse e-mail invalide.").optional().or(z.literal('')),
   taxId: z.string().optional(),
+  stockType: z.enum(['global', 'per-pos']).optional().default('global'),
 });
 
 export default function SettingsPage() {
@@ -73,6 +74,7 @@ export default function SettingsPage() {
       phone: "",
       contactEmail: "",
       taxId: "",
+      stockType: "global" as any,
     },
   });
 
@@ -84,6 +86,7 @@ export default function SettingsPage() {
         phone: company.phone || "",
         contactEmail: company.contactEmail || "",
         taxId: company.taxId || "",
+        stockType: company.stockType || "global",
       });
     }
   }, [company, form]);
@@ -308,6 +311,29 @@ export default function SettingsPage() {
                         <FormControl>
                           <Input placeholder="FR123456789" {...field} />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="stockType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Gestion des Stocks</FormLabel>
+                        <FormControl>
+                          <select
+                            className="flex h-[40px] w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            {...field}
+                          >
+                            <option value="global">Stock Global Centralisé</option>
+                            <option value="per-pos">Stock par Point de Vente</option>
+                          </select>
+                        </FormControl>
+                        <CardDescription className="mt-2 text-sm text-muted-foreground">
+                          Choisissez « Stock Global » si tous vos points de vente puisent dans un même inventaire,
+                          ou « Stock par Point de Vente » si chaque magasin gère son propre inventaire indépendant.
+                        </CardDescription>
                         <FormMessage />
                       </FormItem>
                     )}

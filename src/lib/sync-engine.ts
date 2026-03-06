@@ -9,9 +9,13 @@ export class SyncEngine {
 
         if (typeof window === 'undefined') return;
 
-        const syncAll = () => {
-            DataService.syncPendingProducts(companyId);
-            DataService.syncPendingSales(companyId);
+        const syncAll = async () => {
+            try {
+                await DataService.syncPendingProducts(companyId);
+                await DataService.syncPendingSales(companyId);
+            } catch (error) {
+                console.error('Error during syncAll:', error);
+            }
         };
 
         // Listen for online/offline events
