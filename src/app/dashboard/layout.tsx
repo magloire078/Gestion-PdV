@@ -39,6 +39,7 @@ import { doc, setDoc } from "firebase/firestore";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProfile } from "@/hooks/use-profile";
 import type { Company } from "@/lib/types";
+import { Suspense } from "react";
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de Bord" },
@@ -150,12 +151,12 @@ function MobileNav({ logoUrl, role }: { logoUrl?: string | null, role?: string }
   );
 }
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, isUserLoading: isAuthLoading } = useUser();
   const router = useRouter();
   const { firestore } = useFirebase();
-  const { profile, company, isLoading: isProfileLoading } = useProfile();
+  const { profile, company, isLoading: isProfileLoading, error: profileError } = useProfile();
 
   const isUserLoading = isAuthLoading || isProfileLoading;
 
@@ -163,17 +164,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (!user || !firestore || isUserLoading) return;
 
-    // Only if we are sure profile and company are missing after loading
-    if (!profile && !isProfileLoading) {
+    // Only if we are sure profile and company are missing after loading, and there's no auth/permission error
+    if (!profile && !isProfileLoading && !profileError) {
       console.log("Creating default profile and company for user:", user.uid);
       const userRef = doc(firestore, 'users', user.uid);
+      const role = user.email === 'magloire078@gmail.com' ? 'superadmin' : 'owner';
       setDoc(userRef, {
         email: user.email,
         displayName: user.displayName,
-        role: 'owner',
+        role: role,
         companyId: user.uid,
         createdAt: new Date().toISOString()
-      }, { merge: true });
+      }, { merge: true }).catch(err => console.error("Error creating default profile:", err));
 
       const companyRef = doc(firestore, 'companies', user.uid);
       setDoc(companyRef, {
@@ -183,13 +185,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         creationDate: new Date().toISOString(),
         subscriptionStatus: 'active',
         subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      }, { merge: true });
+      }, { merge: true }).catch(err => console.error("Error creating default company:", err));
     }
   }, [user, firestore, profile, isUserLoading, isProfileLoading]);
 
   useEffect(() => {
     if (!isAuthLoading && !user) {
-      router.push("/auth/signin");
+      router.push("/auth/login");
     }
   }, [user, isAuthLoading, router]);
 
@@ -209,14 +211,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
       <div className="hidden border-r bg-card md:block">
         <div className="flex h-full max-h-screen flex-col gap-2">
-          <div className="flex h-auto flex-col items-center border-b px-4 py-4 lg:h-auto lg:px-6">
+          <div className="flex h-auto flex-col items-center border-b px-4 py-6 lg:h-auto lg:px-6">
             <Link href="/dashboard" className="flex flex-col items-center gap-2 font-semibold">
-              <Logo logoUrl={company?.logoUrl} />
-              {isUserLoading ? (
-                <Skeleton className="h-4 w-32 mt-1" />
-              ) : (
-                company && <span className="text-xs text-muted-foreground">{company.name}</span>
-              )}
+              <Logo logoUrl={company?.logoUrl} name={company?.name} />
             </Link>
           </div>
           <div className="flex-1">
@@ -249,5 +246,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
     </div>
+  );
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="loader">Chargement...</div>
+      </div>
+    }>
+      <DashboardLayoutContent>{children}</DashboardLayoutContent>
+    </Suspense>
   );
 }
