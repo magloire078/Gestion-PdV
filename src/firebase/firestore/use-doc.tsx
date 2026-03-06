@@ -1,5 +1,5 @@
 'use client';
-    
+
 import { useState, useEffect } from 'react';
 import {
   DocumentReference,
@@ -40,7 +40,7 @@ export interface UseDocResult<T> {
  * @returns {UseDocResult<T>} Object with data, isLoading, error, and mutate function.
  */
 export function useDoc<T = any>(
-  memoizedDocRef: (DocumentReference<DocumentData> & {__memo?: boolean}) | null | undefined,
+  memoizedDocRef: (DocumentReference<DocumentData> & { __memo?: boolean }) | null | undefined,
 ): UseDocResult<T> {
   type StateDataType = WithId<T> | null;
 
@@ -83,21 +83,27 @@ export function useDoc<T = any>(
         setIsLoading(false);
       },
       (error: FirestoreError) => {
-        const contextualError = new FirestorePermissionError({
-          operation: 'get',
-          path: memoizedDocRef.path,
-        })
+        console.error(`Firestore error in document subscribe [${memoizedDocRef.path}]:`, error);
 
-        setError(contextualError)
+        if (error.code === 'permission-denied') {
+          const contextualError = new FirestorePermissionError({
+            operation: 'get',
+            path: memoizedDocRef.path,
+          })
+          setError(contextualError)
+          errorEmitter.emit('permission-error', contextualError);
+        } else {
+          setError(error);
+        }
+
         setData(null)
         setIsLoading(false)
-
-        // trigger global error propagation
-        errorEmitter.emit('permission-error', contextualError);
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      setTimeout(() => unsubscribe(), 100);
+    };
   }, [memoizedDocRef, key]); // Re-run if the memoizedDocRef or key changes.
 
   return { data, isLoading, error, mutate };

@@ -22,16 +22,17 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { useUser, useFirestore, useDoc, useMemoFirebase, updateDocumentNonBlocking, useStorage, useAuth } from "@/firebase";
+import { useUser, useFirestore, useDoc, useMemoFirebase, updateDocumentNonBlocking, useAuth } from "@/firebase";
 import { useProfile } from "@/hooks/use-profile";
 import { doc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 import { updateProfile } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, User as UserIcon, Building } from "lucide-react";
+import { Loader2, User as UserIcon, Building, PlusCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Image from 'next/image';
+import { CldImage } from 'next-cloudinary';
 import type { Company } from "@/lib/types";
 
 
@@ -47,10 +48,10 @@ export default function SettingsPage() {
   const { user } = useUser();
   const auth = useAuth();
   const firestore = useFirestore();
-  const storage = useStorage();
   const { toast } = useToast();
   const [isAvatarUploading, setIsAvatarUploading] = useState(false);
   const [isLogoUploading, setIsLogoUploading] = useState(false);
+  const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -101,26 +102,23 @@ export default function SettingsPage() {
     if (!file || !user || !auth.currentUser) return;
 
     setIsAvatarUploading(true);
-    const storageRef = ref(storage, `avatars/${user.uid}/${file.name}`);
-
     try {
-      await uploadBytes(storageRef, file);
-      const photoURL = await getDownloadURL(storageRef);
+      const photoURL = await uploadToCloudinary(file, `avatars/${user.uid}`);
 
-      await updateProfile(auth.currentUser, { photoURL });
-
-      toast({
-        title: "Avatar mis à jour",
-        description: "Votre nouvelle image de profil a été enregistrée.",
-      });
-      // Recharger pour voir le nouvel avatar partout
-      window.location.reload();
+      if (photoURL) {
+        await updateProfile(auth.currentUser, { photoURL });
+        setLocalAvatarUrl(photoURL);
+        toast({
+          title: "Avatar mis à jour",
+          description: "Votre nouvelle image de profil a été enregistrée sur Cloudinary.",
+        });
+      }
     } catch (error) {
       console.error("Error uploading avatar:", error);
       toast({
         variant: "destructive",
         title: "Erreur de téléversement",
-        description: "Impossible de téléverser votre avatar. Veuillez réessayer.",
+        description: "Impossible de téléverser votre avatar.",
       });
     } finally {
       setIsAvatarUploading(false);
@@ -129,28 +127,26 @@ export default function SettingsPage() {
 
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !user || !companyRef || !storage) return;
+    if (!file || !user || !companyRef) return;
 
     setIsLogoUploading(true);
-    const storageRef = ref(storage, `logos/${companyId}/${file.name}`);
-
     try {
-      await uploadBytes(storageRef, file);
-      const logoUrl = await getDownloadURL(storageRef);
+      const logoUrl = await uploadToCloudinary(file, `logos/${companyId}`);
 
-      updateDocumentNonBlocking(companyRef, { logoUrl });
-
-      toast({
-        title: "Logo mis à jour",
-        description: "Le logo de votre entreprise a été enregistré.",
-      });
-      mutateCompany(); // Force re-fetch of company data to show new logo
+      if (logoUrl) {
+        updateDocumentNonBlocking(companyRef, { logoUrl });
+        toast({
+          title: "Logo mis à jour",
+          description: "Le logo de votre entreprise a été enregistré sur Cloudinary.",
+        });
+        mutateCompany();
+      }
     } catch (error) {
       console.error("Error uploading logo:", error);
       toast({
         variant: "destructive",
         title: "Erreur de téléversement",
-        description: "Impossible de téléverser votre logo. Veuillez réessayer.",
+        description: "Impossible de téléverser votre logo.",
       });
     } finally {
       setIsLogoUploading(false);
@@ -170,53 +166,70 @@ export default function SettingsPage() {
         <CardContent className="space-y-8">
           <div className="space-y-6">
             <h3 className="text-lg font-medium">Profil Utilisateur</h3>
-            <div className="flex items-center gap-4">
-              <Avatar className="h-20 w-20">
-                <AvatarImage src={user?.photoURL ?? undefined} />
-                <AvatarFallback>
-                  <UserIcon className="h-10 w-10 text-muted-foreground" />
-                </AvatarFallback>
-              </Avatar>
+            <div className="flex items-center gap-6 p-4 border rounded-lg bg-muted/10">
+              <div className="relative group cursor-pointer" onClick={() => avatarFileInputRef.current?.click()}>
+                <Avatar className="h-24 w-24 border-2 border-primary/20 transition-all group-hover:border-primary/50 group-hover:shadow-md">
+                  <AvatarImage src={localAvatarUrl || user?.photoURL || undefined} className="object-cover" />
+                  <AvatarFallback className="bg-primary/5">
+                    <UserIcon className="h-12 w-12 text-primary/40" />
+                  </AvatarFallback>
+                </Avatar>
+                {isAvatarUploading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full">
+                    <Loader2 className="h-8 w-8 animate-spin text-white" />
+                  </div>
+                )}
+                <div className="absolute -bottom-1 -right-1 bg-primary text-white p-1.5 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                  <PlusCircle className="h-4 w-4" />
+                </div>
+              </div>
               <div className="flex flex-col gap-2">
-                <Button onClick={() => avatarFileInputRef.current?.click()} disabled={isAvatarUploading}>
-                  {isAvatarUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Changer l'avatar
-                </Button>
+                <h4 className="font-medium text-sm">Avatar de profil</h4>
+                <p className="text-xs text-muted-foreground max-w-[200px]">Cliquez sur l'image pour charger un nouvel avatar. PNG, JPG jusqu'à 2MB.</p>
                 <Input
                   type="file"
                   ref={avatarFileInputRef}
                   onChange={handleAvatarUpload}
                   className="hidden"
                   accept="image/png, image/jpeg, image/gif"
+                  disabled={isAvatarUploading}
                 />
-                <p className="text-xs text-muted-foreground">PNG, JPG, GIF jusqu'à 2MB.</p>
               </div>
             </div>
           </div>
 
           <div className="space-y-6">
             <h3 className="text-lg font-medium">Logo de l'entreprise</h3>
-            <div className="flex items-center gap-4">
-              <div className="h-20 w-20 flex items-center justify-center rounded-md border border-dashed">
+            <div className="flex items-center gap-6 p-4 border rounded-lg bg-muted/10">
+              <div
+                className="relative group cursor-pointer h-24 w-24 flex items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/20 hover:border-primary/50 transition-all bg-background"
+                onClick={() => logoFileInputRef.current?.click()}
+              >
                 {company?.logoUrl ? (
-                  <Image src={company.logoUrl} alt="Logo de l'entreprise" width={80} height={80} className="object-contain rounded-md" />
+                  <CldImage src={company.logoUrl} alt="Logo de l'entreprise" width={96} height={96} preserveTransformations className="object-contain rounded-md transition-transform group-hover:scale-105" />
                 ) : (
-                  <Building className="h-10 w-10 text-muted-foreground" />
+                  <Building className="h-12 w-12 text-muted-foreground/30" />
                 )}
+                {isLogoUploading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
+                    <Loader2 className="h-8 w-8 animate-spin text-white" />
+                  </div>
+                )}
+                <div className="absolute -bottom-1 -right-1 bg-primary text-white p-1.5 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                  <PlusCircle className="h-4 w-4" />
+                </div>
               </div>
               <div className="flex flex-col gap-2">
-                <Button onClick={() => logoFileInputRef.current?.click()} disabled={isLogoUploading}>
-                  {isLogoUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Changer le logo
-                </Button>
+                <h4 className="font-medium text-sm">Logo de la marque</h4>
+                <p className="text-xs text-muted-foreground max-w-[200px]">Format PNG recommandé pour la transparence. Cliquez sur le cadre pour changer.</p>
                 <Input
                   type="file"
                   ref={logoFileInputRef}
                   onChange={handleLogoUpload}
                   className="hidden"
                   accept="image/png, image/jpeg, image/gif"
+                  disabled={isLogoUploading}
                 />
-                <p className="text-xs text-muted-foreground">PNG, JPG, GIF jusqu'à 2MB. Fond transparent recommandé.</p>
               </div>
             </div>
           </div>

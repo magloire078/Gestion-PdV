@@ -30,10 +30,11 @@ import { MoreHorizontal, Shield, UserX, UserCheck, Mail, Users } from "lucide-re
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { UserProfile, UserRole } from "@/lib/types";
-import { toast } from "sonner";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AdminUsersPage() {
     const firestore = useFirestore();
+    const { toast } = useToast();
     const usersRef = useMemoFirebase(() => collection(firestore, "users"), [firestore]);
     const { data: users, isLoading } = useCollection<UserProfile>(usersRef);
 
@@ -42,10 +43,17 @@ export default function AdminUsersPage() {
             await updateDoc(doc(firestore, "users", userId), {
                 role: newRole
             });
-            toast.success("Rôle mis à jour avec succès");
+            toast({
+                title: "Rôle mis à jour",
+                description: "Le rôle de l'utilisateur a été mis à jour avec succès."
+            });
         } catch (error) {
             console.error("Error updating role:", error);
-            toast.error("Erreur lors de la mise à jour du rôle");
+            toast({
+                variant: "destructive",
+                title: "Erreur",
+                description: "Erreur lors de la mise à jour du rôle"
+            });
         }
     };
 
@@ -53,10 +61,17 @@ export default function AdminUsersPage() {
         if (!confirm("Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible.")) return;
         try {
             await deleteDoc(doc(firestore, "users", userId));
-            toast.success("Utilisateur supprimé");
+            toast({
+                title: "Utilisateur supprimé",
+                description: "Le compte a été supprimé avec succès."
+            });
         } catch (error) {
             console.error("Error deleting user:", error);
-            toast.error("Erreur lors de la suppression");
+            toast({
+                variant: "destructive",
+                title: "Erreur",
+                description: "Erreur lors de la suppression"
+            });
         }
     };
 

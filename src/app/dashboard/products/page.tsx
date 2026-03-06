@@ -58,10 +58,11 @@ import { collection, doc, addDoc, updateDoc, deleteDoc, query, where } from "fir
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataService } from "@/lib/data-service";
-import { Product } from "@/lib/db";
+import { Product, db } from "@/lib/db";
 import { useProfile } from "@/hooks/use-profile";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { Loader2 } from "lucide-react";
+import { useLiveQuery } from "dexie-react-hooks";
 
 const CATEGORIES = [
     "Boissons",
@@ -93,13 +94,12 @@ export default function ProductsPage() {
     const [search, setSearch] = useState("");
     //formData removed as it's now local to ProductDialog
 
-    const productsQuery = useMemoFirebase(() => {
-        if (!firestore || !company?.id) return null;
-        return query(collection(firestore, "products"), where("companyId", "==", company.id));
-    }, [firestore, company?.id]);
+    const products = useLiveQuery(
+        () => company ? db.products.where('companyId').equals(company.id).toArray() : [],
+        [company?.id]
+    );
 
-    const { data: products, isLoading: isCollectionLoading } = useCollection<Product>(productsQuery);
-    const isLoading = isAuthLoading || isProfileLoading || isCollectionLoading;
+    const isLoading = isAuthLoading || isProfileLoading || products === undefined;
 
     const filtered = useMemo(() => {
         if (!products) return [];

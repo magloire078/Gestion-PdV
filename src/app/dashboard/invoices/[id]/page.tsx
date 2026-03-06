@@ -38,6 +38,7 @@ function getStatusBadgeVariant(status?: Invoice["status"]) {
 export default function InvoiceDetailsPage() {
   const { id: invoiceId } = useParams();
   const { profile } = useProfile();
+  const firestore = useFirestore();
   const companyId = profile?.companyId;
 
   const invoiceRef = useMemoFirebase(() => {

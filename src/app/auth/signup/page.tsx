@@ -161,7 +161,7 @@ export default function SignUpPage() {
         </Form>
         <div className="mt-4 text-center text-sm">
           Vous avez déjà un compte?{" "}
-          <Link href="/auth/signin" className="underline">
+          <Link href="/auth/login" className="underline">
             Se connecter
           </Link>
         </div>

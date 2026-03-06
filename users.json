@@ -1,0 +1,21 @@
+{"users": [
+{
+  "localId": "deI0ahRkCbYw5aBZTpQpatcoJxp2",
+  "email": "magloire078@gmail.com",
+  "emailVerified": false,
+  "passwordHash": "jpUQOcZbp8KppOv4slDgVT+if8uqu0uVj7BGq+HeJhfprU/11HUr9419ZkX8m6JqEP2slDieYT/QrQUnXibxoQ==",
+  "salt": "H2fRmiHnBfv1WA==",
+  "lastSignedInAt": "1772629345247",
+  "createdAt": "1760106264599",
+  "providerUserInfo": []
+},
+{
+  "localId": "qjDqvgx3VvgIORU6v46FCFENKwZ2",
+  "email": "bhellys03@gmail.com",
+  "emailVerified": false,
+  "passwordHash": "mUIt3fyNCW6UsvQqQwtp6nIm4IO1m7Ag7ZUKegCBSDXPbZ4NW1h9fBq1F5pZd+64zHyuZhuRRnXmYmbVt+U4ZA==",
+  "salt": "5krytEB7CGlwFA==",
+  "lastSignedInAt": "1760107345310",
+  "createdAt": "1760107345310",
+  "providerUserInfo": []
+}]}

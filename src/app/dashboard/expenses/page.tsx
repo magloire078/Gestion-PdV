@@ -58,9 +58,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoreHorizontal, PlusCircle, ArrowUpDown, ExternalLink, Loader2, Coins } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { useUser, useFirestore, useStorage, useCollection, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useFirebase } from "@/firebase";
+import { useUser, useFirestore, useCollection, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useFirebase } from "@/firebase";
 import { collection, doc, query, where } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { uploadToCloudinary } from "@/lib/cloudinary";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { CldImage } from 'next-cloudinary';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProfile } from "@/hooks/use-profile";
@@ -122,10 +126,10 @@ export default function ExpensesPage() {
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'ascending' | 'descending' }>({ key: 'date', direction: 'descending' });
   const [isUploading, setIsUploading] = useState(false);
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
   const { user } = useUser();
   const { company, isLoading: isProfileLoading } = useProfile();
   const firestore = useFirestore();
-  const storage = useStorage();
   const { toast } = useToast();
 
   const expensesQuery = useMemoFirebase(() => {
@@ -170,16 +174,14 @@ export default function ExpensesPage() {
   };
 
   const uploadReceipt = async (file: File): Promise<string | null> => {
-    if (!user || !storage) return null;
+    if (!user || !company) return null;
     setIsUploading(true);
-    const storageRef = ref(storage, `receipts/${company.id}/${Date.now()}_${file.name}`);
     try {
-      await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(storageRef);
-      return downloadURL;
+      const url = await uploadToCloudinary(file, `receipts/${company.id}`);
+      return url;
     } catch (error) {
       console.error("Error uploading receipt:", error);
-      toast({ variant: "destructive", title: "Erreur de téléversement", description: "Impossible de téléverser le justificatif." });
+      toast({ variant: "destructive", title: "Erreur de téléversement", description: "Impossible de téléverser le justificatif sur Cloudinary." });
       return null;
     } finally {
       setIsUploading(false);
@@ -192,14 +194,7 @@ export default function ExpensesPage() {
     if (!company || !firestore) return;
 
     const formData = new FormData(event.currentTarget);
-    const receiptFile = formData.get("receipt") as File | null;
-    let receiptUrl: string | undefined = undefined;
-
-    if (receiptFile && receiptFile.size > 0) {
-      const uploadedUrl = await uploadReceipt(receiptFile);
-      if (!uploadedUrl) return; // Stop if upload fails
-      receiptUrl = uploadedUrl;
-    }
+    const receiptUrl = receiptPreviewUrl || undefined;
 
     const newExpense = {
       description: formData.get("description") as string,
@@ -212,6 +207,7 @@ export default function ExpensesPage() {
     addDocumentNonBlocking(collection(firestore, "expenses"), newExpense);
     toast({ title: "Dépense ajoutée", description: "La nouvelle dépense a été enregistrée." });
     setIsAddDialogOpen(false);
+    setReceiptPreviewUrl(null);
     (event.target as HTMLFormElement).reset();
   };
 
@@ -220,14 +216,7 @@ export default function ExpensesPage() {
     if (!selectedExpense || !user || !firestore) return;
 
     const formData = new FormData(event.currentTarget);
-    const receiptFile = formData.get("receipt") as File | null;
-    let receiptUrl = selectedExpense.receiptUrl;
-
-    if (receiptFile && receiptFile.size > 0) {
-      const uploadedUrl = await uploadReceipt(receiptFile);
-      if (!uploadedUrl) return; // Stop if upload fails
-      receiptUrl = uploadedUrl;
-    }
+    const receiptUrl = receiptPreviewUrl || undefined;
 
     const updatedExpense = {
       description: formData.get("description") as string,
@@ -242,6 +231,7 @@ export default function ExpensesPage() {
     toast({ title: "Dépense modifiée", description: "Les détails de la dépense ont été mis à jour." });
     setIsEditDialogOpen(false);
     setSelectedExpense(null);
+    setReceiptPreviewUrl(null);
   };
 
   const handleDeleteExpense = () => {
@@ -254,8 +244,20 @@ export default function ExpensesPage() {
 
   const openEditDialog = (expense: Expense) => {
     setSelectedExpense(expense);
+    setReceiptPreviewUrl(expense.receiptUrl || null);
     setIsEditDialogOpen(true);
   }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const url = await uploadReceipt(file);
+    if (url) {
+      setReceiptPreviewUrl(url);
+      toast({ title: "Justificatif chargé", description: "Le reçu a été mis à jour sur Cloudinary." });
+    }
+  };
 
   const renderEmptyState = () => (
     <div className="text-center py-12">
@@ -316,7 +318,42 @@ export default function ExpensesPage() {
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="receipt" className="text-right">Justificatif</Label>
-                  <Input id="receipt" name="receipt" type="file" className="col-span-3" />
+                  <Input
+                    id="receipt"
+                    name="receipt"
+                    type="file"
+                    className="col-span-3"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    disabled={isUploading}
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right">Aperçu</Label>
+                  <div className="col-span-3 flex justify-center p-2 border rounded-md bg-muted/30 min-h-[100px] items-center">
+                    {receiptPreviewUrl ? (
+                      <div className="relative group w-full flex justify-center">
+                        <CldImage
+                          src={receiptPreviewUrl}
+                          alt="Preview"
+                          width={800}
+                          height={800}
+                          preserveTransformations
+                          className="max-h-[120px] w-auto object-contain rounded-md shadow-sm"
+                        />
+                        {isUploading && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-md">
+                            <Loader2 className="h-6 w-6 animate-spin text-white" />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-muted-foreground flex flex-col items-center gap-1">
+                        <PlusCircle className="h-5 w-5 text-muted-foreground/30" />
+                        <span className="text-[10px] italic font-medium">Aucun reçu sélectionné</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <DialogFooter>
@@ -497,16 +534,43 @@ export default function ExpensesPage() {
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="editReceipt" className="text-right">Justificatif</Label>
-                  <Input id="editReceipt" name="receipt" type="file" className="col-span-3" />
+                  <Input
+                    id="editReceipt"
+                    name="receipt"
+                    type="file"
+                    className="col-span-3"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    disabled={isUploading}
+                  />
                 </div>
-                {selectedExpense.receiptUrl && (
-                  <div className="col-span-4 text-center text-sm">
-                    <Link href={selectedExpense.receiptUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center justify-center gap-1">
-                      Voir le justificatif actuel <ExternalLink className="h-3 w-3" />
-                    </Link>
-                    <p className="text-muted-foreground text-xs">Téléverser un nouveau fichier le remplacera.</p>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right">Aperçu</Label>
+                  <div className="col-span-3 flex justify-center p-2 border rounded-md bg-muted/30 min-h-[100px] items-center">
+                    {receiptPreviewUrl ? (
+                      <div className="relative group w-full flex justify-center">
+                        <CldImage
+                          src={receiptPreviewUrl}
+                          alt="Preview"
+                          width={800}
+                          height={800}
+                          preserveTransformations
+                          className="max-h-[120px] w-auto object-contain rounded-md shadow-sm"
+                        />
+                        {isUploading && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-md">
+                            <Loader2 className="h-6 w-6 animate-spin text-white" />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-muted-foreground flex flex-col items-center gap-1">
+                        <PlusCircle className="h-5 w-5 text-muted-foreground/30" />
+                        <span className="text-[10px] italic font-medium">Aucun reçu sélectionné</span>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={isUploading}>

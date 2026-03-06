@@ -1,0 +1,23 @@
+﻿{
+  "status": "success",
+  "result": [
+    {
+      "name": "projects/studio-2935714752-24641/databases/(default)",
+      "uid": "9287ca8f-5693-4d65-b169-3e1bcb6a2277",
+      "createTime": "2025-10-10T14:20:58.824307Z",
+      "updateTime": "2025-10-10T14:20:58.824307Z",
+      "locationId": "us-central1",
+      "type": "FIRESTORE_NATIVE",
+      "concurrencyMode": "PESSIMISTIC",
+      "versionRetentionPeriod": "3600s",
+      "earliestVersionTime": "2026-03-04T12:28:08.953837Z",
+      "appEngineIntegrationMode": "DISABLED",
+      "pointInTimeRecoveryEnablement": "POINT_IN_TIME_RECOVERY_DISABLED",
+      "deleteProtectionState": "DELETE_PROTECTION_DISABLED",
+      "databaseEdition": "STANDARD",
+      "freeTier": true,
+      "realtimeUpdatesMode": "REALTIME_UPDATES_MODE_ENABLED",
+      "etag": "ILSEv9OshpMDMMS5o9Cc5pID"
+    }
+  ]
+}

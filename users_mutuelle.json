@@ -1,0 +1,56 @@
+{"users": [
+{
+  "localId": "0l4oGy2mKzR82qkqnSvuJeEeLP83",
+  "email": "bhellys03@gmail.com",
+  "emailVerified": false,
+  "passwordHash": "Twt/rQFgIkzcX+lpLvOICQF/YD7WnEtdkoz1ML5CSSlPBwiRPmFERodqDResCKNpTbIuUNgiT7+GkX5JiVBqAQ==",
+  "salt": "t6h9D6BIy6Wmpg==",
+  "displayName": "Teddy Bhellys",
+  "lastSignedInAt": "1772177358519",
+  "createdAt": "1772177358519",
+  "providerUserInfo": []
+},
+{
+  "localId": "DnyIDGKYPnXu25HJ56Omgjfb8Ov2",
+  "email": "tester_772@example.com",
+  "emailVerified": false,
+  "passwordHash": "zJ5klQEx7lVCBnA9z8gqazfinDREAmD67Ix6PXGU24Oba8nyBG9vGB748FchuH4zmaN5cbsb9fgIZ6yMdp20HQ==",
+  "salt": "Tw0H+g0n0UVteg==",
+  "displayName": "Test User",
+  "lastSignedInAt": "1772056420844",
+  "createdAt": "1772034862914",
+  "providerUserInfo": []
+},
+{
+  "localId": "cleCtmFpfJNSV6d3PlpUwSiWTNe2",
+  "email": "client2@gmail.com",
+  "emailVerified": false,
+  "passwordHash": "dwPCHQTjfC8+pM+M7amEmdv9Kubefb2OJFAWxsLJXn5Ll6cm6DG7awTRRSuh2tPpBThjvjP/Jm6dNuq6OEB/bg==",
+  "salt": "tqgGdiJ3lFFkmg==",
+  "displayName": "KOUADIO KOUAKOU MAGLOIRE",
+  "lastSignedInAt": "1759006671239",
+  "createdAt": "1759006671239",
+  "providerUserInfo": []
+},
+{
+  "localId": "f1oyh8TkspZ4uUWlzvuM0QnXfPn1",
+  "email": "magloire078@gmail.com",
+  "emailVerified": false,
+  "passwordHash": "3gJQlh1kwg99W0vO12qb+zFrYFsT+M4/6q5pLYDlnQtYoVwGEZnmCmqjcOLE93J6dxl86yW8R2IwmPYiMD5iQA==",
+  "salt": "OT+0OtzmmCoBGw==",
+  "displayName": "KOUADIO KOUAKOU Magloire",
+  "lastSignedInAt": "1772400870243",
+  "createdAt": "1758988639992",
+  "providerUserInfo": []
+},
+{
+  "localId": "yuBHPMsddqWs9oJMjdyDNpg4hvI2",
+  "email": "magloire077@gmail.com",
+  "emailVerified": false,
+  "passwordHash": "3lRm3528ltTf6ZfNV6dlTy24eeTlwsZ2ux/W/gb0fzS16kK8SWITMZrkF5KlF3T5Pi05weNlWKisKsjz7moQnQ==",
+  "salt": "mrGonRAqWLKQtA==",
+  "displayName": "Magloire KOUADIO",
+  "lastSignedInAt": "1758987907319",
+  "createdAt": "1758987907319",
+  "providerUserInfo": []
+}]}

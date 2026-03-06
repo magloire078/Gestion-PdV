@@ -1,14 +1,13 @@
-
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 
-export function Logo({ className, logoUrl, name }: { className?: string; logoUrl?: string | null; name?: string }) {
+export function Logo({ className, logoUrl, name, compact }: { className?: string; logoUrl?: string | null; name?: string; compact?: boolean }) {
   const displayName = name || "Gestion PME";
 
   if (logoUrl) {
     return (
       <div className={cn('flex items-center gap-2', className)}>
-        <div className="relative h-8 w-8 flex items-center justify-center overflow-hidden rounded-md border border-border/50 bg-background">
+        <div className="relative h-8 w-8 flex items-center justify-center overflow-hidden rounded-md border border-border/50 bg-background shrink-0">
           <Image
             src={logoUrl}
             alt={`Logo de ${displayName}`}
@@ -16,14 +15,14 @@ export function Logo({ className, logoUrl, name }: { className?: string; logoUrl
             className="object-contain p-0.5"
           />
         </div>
-        <span className="text-xl font-bold text-foreground whitespace-nowrap">{displayName}</span>
+        {!compact && <span className="text-xl font-bold text-foreground whitespace-nowrap">{displayName}</span>}
       </div>
     );
   }
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <div className="relative h-8 w-8 flex items-center justify-center rounded-md bg-primary/10 border border-primary/20">
+      <div className="relative h-8 w-8 flex items-center justify-center rounded-md bg-primary/10 border border-primary/20 shrink-0">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           width="18"
@@ -42,8 +41,7 @@ export function Logo({ className, logoUrl, name }: { className?: string; logoUrl
           <rect width="23" height="23" x="0.5" y="0.5" rx="4"></rect>
         </svg>
       </div>
-      <span className="text-xl font-bold text-foreground whitespace-nowrap">{displayName}</span>
+      {!compact && <span className="text-xl font-bold text-foreground whitespace-nowrap">{displayName}</span>}
     </div>
   );
 }
-

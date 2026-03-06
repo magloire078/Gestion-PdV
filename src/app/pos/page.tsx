@@ -6,7 +6,9 @@ import { usePOSStore } from '@/hooks/use-pos-store';
 import { useProfile } from '@/hooks/use-profile';
 import { DataService } from '@/lib/data-service';
 import { SyncEngine } from '@/lib/sync-engine';
-import { Product } from '@/lib/db';
+import { Product, db } from '@/lib/db';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { useToast } from '@/hooks/use-toast';
 import {
     ShoppingCart,
     Search,
@@ -25,9 +27,16 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import Image from 'next/image';
 
+import { Logo } from '@/components/logo';
+
 function POSPageContent() {
     const { company, isLoading: isProfileLoading } = useProfile();
-    const [products, setProducts] = useState<Product[]>([]);
+    const products = useLiveQuery(() =>
+        company ? db.products.where('companyId').equals(company.id).toArray() : [],
+        [company?.id]
+    ) || [];
+
+    const { toast } = useToast();
     const [search, setSearch] = useState('');
     const [isOnline, setIsOnline] = useState(true);
     const { cart, addItem, removeItem, updateQuantity, total, clearCart } = usePOSStore();
@@ -37,13 +46,6 @@ function POSPageContent() {
 
         // Start Sync Engine
         SyncEngine.start(company.id);
-
-        // Fetch products
-        const fetchProducts = async () => {
-            const data = await DataService.getProducts(company.id);
-            setProducts(data);
-        };
-        fetchProducts();
 
         // Online/Offline tracking
         setIsOnline(navigator.onLine);
@@ -119,9 +121,17 @@ function POSPageContent() {
         try {
             await DataService.saveSale(sale);
             clearCart();
-            alert('Vente enregistrée avec succès !');
+            toast({
+                title: 'Succès',
+                description: 'Vente enregistrée avec succès !',
+                variant: 'default'
+            });
         } catch (error) {
-            alert('Erreur lors de l\'enregistrement de la vente.');
+            toast({
+                title: 'Erreur',
+                description: 'Erreur lors de l\'enregistrement de la vente.',
+                variant: 'destructive'
+            });
         }
     };
 
@@ -129,10 +139,8 @@ function POSPageContent() {
         <div className="flex h-screen bg-neutral-950 text-white overflow-hidden font-sans">
             {/* Sidebar Navigation */}
             <aside className="w-20 border-r border-neutral-800 flex flex-col items-center py-6 gap-8 bg-neutral-900/50 backdrop-blur-xl">
-                <Link href="/dashboard" title="Retour au Tableau de Bord">
-                    <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20 cursor-pointer hover:bg-indigo-700 transition-colors">
-                        <LayoutGrid className="text-white" size={24} />
-                    </div>
+                <Link href="/dashboard" title="Retour au Tableau de Bord" className="hover:opacity-80 transition-opacity">
+                    <Logo logoUrl={company?.logoUrl} name={company?.name} compact />
                 </Link>
                 <nav className="flex flex-col gap-6">
                     <Button variant="ghost" className="w-12 h-12 rounded-xl p-0 hover:bg-neutral-800">

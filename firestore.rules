@@ -1,63 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // helper functions
-    function isSignedIn() {
-      return request.auth != null;
-    }
-    
-    function getProfile() {
-      let path = /databases/$(database)/documents/users/$(request.auth.uid);
-      return exists(path) ? get(path).data : null;
-    }
-
-    match /users/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
-    }
-
-    match /companies/{companyId} {
-      allow read, write: if isSignedIn() && (
-        resource == null || 
-        resource.data.ownerId == request.auth.uid || 
-        getProfile().companyId == companyId || 
-        getProfile().role == 'superadmin'
-      );
-      allow create: if isSignedIn();
-      allow delete: if isSignedIn() && getProfile().role == 'superadmin';
-    }
-
-    match /products/{id} {
-      allow read, write: if isSignedIn() && (resource.data.companyId == getProfile().companyId || getProfile().role == 'superadmin');
-    }
-
-    match /invoices/{id} {
-      allow read, write: if isSignedIn() && (resource.data.companyId == getProfile().companyId || getProfile().role == 'superadmin');
-    }
-
-    match /expenses/{id} {
-      allow read, write: if isSignedIn() && (resource.data.companyId == getProfile().companyId || getProfile().role == 'superadmin');
-    }
-
-    match /clients/{id} {
-      allow read, write: if isSignedIn() && (resource.data.companyId == getProfile().companyId || getProfile().role == 'superadmin');
-    }
-    
-    match /stockMovements/{id} {
-      allow read, create: if isSignedIn() && (
-        (request.resource == null && resource.data.companyId == getProfile().companyId) ||
-        (request.resource != null && request.resource.data.companyId == getProfile().companyId) ||
-        getProfile().role == 'superadmin'
-      );
-      allow update, delete: if isSignedIn() && getProfile().role == 'superadmin';
-    }
-
-    match /sales/{id} {
-      allow read, write: if isSignedIn() && (
-        (request.resource == null && resource.data.companyId == getProfile().companyId) ||
-        (request.resource != null && request.resource.data.companyId == getProfile().companyId) || 
-        getProfile().role == 'superadmin'
-      );
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }

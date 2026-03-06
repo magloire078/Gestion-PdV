@@ -6,7 +6,7 @@ const withPWA = require('next-pwa')({
   skipWaiting: true,
 });
 
-const ObjectNextConfig: NextConfig = {
+const ObjectNextConfig = {
   /* config options here */
   typescript: {
     ignoreBuildErrors: true,

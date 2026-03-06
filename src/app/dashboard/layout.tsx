@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Logo } from "@/components/logo";
+import { SyncStatus } from "@/components/sync-status";
 import { useState, useEffect } from "react";
 import { useAuth, useUser, useFirebase, useMemoFirebase } from "@/firebase";
 import { doc, setDoc } from "firebase/firestore";
@@ -232,6 +233,9 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                 </Link>
               ))}
             </nav>
+          </div>
+          <div className="p-4 mt-auto">
+            <SyncStatus />
           </div>
         </div>
       </div>
