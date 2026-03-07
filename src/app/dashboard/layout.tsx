@@ -165,39 +165,60 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
 
   const hasAttemptedCreateRef = useRef(false);
 
-  // Auto-create profile and company for brand-new users (first time sign-up)
+  // Auto-create/repair profile and company for users
   useEffect(() => {
     if (!user || !firestore || isUserLoading) return;
 
-    // Only attempt once per session per user, and only if profile is truly missing
-    if (!profile && !isProfileLoading && !hasAttemptedCreateRef.current) {
-      hasAttemptedCreateRef.current = true;
-      const userRef = doc(firestore, 'users', user.uid);
-      const role = user.email === 'magloire078@gmail.com' ? 'superadmin' : 'owner';
-      setDoc(userRef, {
-        email: user.email,
-        displayName: user.displayName,
-        role: role,
-        companyId: user.uid,
-        createdAt: new Date().toISOString()
-      }, { merge: true }).catch(() => {
-        // Silently fail — the user may not have a profile yet due to rules propagation delay.
-        // They will be redirected to login or shown a blank state.
-      });
+    const performAutoOnboarding = async () => {
+      // 1. Repair/Create User Profile
+      if (!profile && !isProfileLoading && !hasAttemptedCreateRef.current) {
+        hasAttemptedCreateRef.current = true;
+        console.log("Auto-onboarding: Profile missing, creating...");
+        const userRef = doc(firestore, 'users', user.uid);
+        const role = user.email === 'magloire078@gmail.com' ? 'superadmin' : 'owner';
 
-      const companyRef = doc(firestore, 'companies', user.uid);
-      setDoc(companyRef, {
-        name: user.displayName ?? user.email ?? 'Mon Entreprise',
-        ownerId: user.uid,
-        email: user.email ?? '',
-        creationDate: new Date().toISOString(),
-        subscriptionStatus: 'active',
-        subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      }, { merge: true }).catch(() => {
-        // Silently fail — same reason as above.
-      });
-    }
-  }, [user, firestore, profile, isUserLoading, isProfileLoading]);
+        try {
+          await setDoc(userRef, {
+            email: user.email,
+            displayName: user.displayName,
+            role: role,
+            companyId: user.uid,
+            createdAt: new Date().toISOString()
+          }, { merge: true });
+          console.log("Auto-onboarding: Profile created.");
+        } catch (err) {
+          console.error("Auto-onboarding: Failed to create profile:", err);
+        }
+      }
+
+      // 2. Repair/Create Company (if profile exists but company doesn't)
+      // Check if we have a profile but useProfile couldn't find the company
+      const effectiveCompanyId = profile?.companyId || user.uid;
+
+      if (!company && !isProfileLoading && !hasAttemptedCreateRef.current) {
+        // This handles cases where profile exists but company doc is missing
+        console.log("Auto-onboarding: Company missing, creating for ID:", effectiveCompanyId);
+        hasAttemptedCreateRef.current = true;
+        const companyRef = doc(firestore, 'companies', effectiveCompanyId);
+
+        try {
+          await setDoc(companyRef, {
+            name: user.displayName ?? user.email ?? 'Mon Entreprise',
+            ownerId: user.uid,
+            email: user.email ?? '',
+            creationDate: new Date().toISOString(),
+            subscriptionStatus: 'active',
+            subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+          }, { merge: true });
+          console.log("Auto-onboarding: Company created.");
+        } catch (err) {
+          console.error("Auto-onboarding: Failed to create company:", err);
+        }
+      }
+    };
+
+    performAutoOnboarding();
+  }, [user, firestore, profile, company, isUserLoading, isProfileLoading]);
 
   useEffect(() => {
     if (!isAuthLoading && !user) {
