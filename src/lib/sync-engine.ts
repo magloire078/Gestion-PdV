@@ -20,7 +20,6 @@ export class SyncEngine {
 
         // Listen for online/offline events
         this.onlineListener = () => {
-            console.log('App is online. Starting sync...');
             syncAll();
         };
         window.addEventListener('online', this.onlineListener);

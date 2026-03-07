@@ -27,6 +27,7 @@ export interface Sale {
     }[];
     total: number;
     timestamp: number;
+    status: 'completed' | 'refunded';
     synced: number; // 0 or 1
 }
 
@@ -38,7 +39,7 @@ export class POSDatabase extends Dexie {
         super('POSDatabase');
         this.version(5).stores({
             products: 'id, companyId, name, category, barcode, synced',
-            sales: 'id, companyId, posId, cashierId, timestamp, synced'
+            sales: 'id, companyId, posId, cashierId, timestamp, status, synced'
         });
     }
 }

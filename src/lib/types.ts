@@ -77,6 +77,7 @@ export interface Sale {
   }[];
   total: number;
   timestamp: number;
+  status?: 'completed' | 'refunded';
 }
 
 export interface Company {

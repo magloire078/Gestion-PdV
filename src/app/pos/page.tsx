@@ -22,7 +22,10 @@ import {
     Trash2,
     Plus,
     Minus,
-    LayoutGrid
+    History,
+    LayoutGrid,
+    Clock,
+    Receipt
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -69,6 +72,23 @@ function POSPageContent() {
         posName?: string;
     } | null>(null);
     const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+    const [view, setView] = useState<'catalog' | 'history'>('catalog');
+
+    // Today's sales — live query so it updates as sales are added
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const todaySales = useLiveQuery(() =>
+        company
+            ? db.sales
+                .where('companyId').equals(company.id)
+                .and(s => s.timestamp >= startOfDay.getTime())
+                .reverse()
+                .toArray()
+            : [],
+        [company?.id, startOfDay.toDateString()]
+    ) || [];
+
+    const todayTotal = todaySales.reduce((acc, s) => acc + s.total, 0);
 
     useEffect(() => {
         if (profile?.assignedPosId) {
@@ -208,12 +228,22 @@ function POSPageContent() {
                     <Link href="/dashboard" title="Retour au Tableau de Bord" className="hover:opacity-80 transition-opacity">
                         <Logo logoUrl={company?.logoUrl} name={company?.name} compact />
                     </Link>
-                    <nav className="flex flex-col gap-6">
-                        <Button variant="ghost" className="w-12 h-12 rounded-xl p-0 hover:bg-neutral-800">
-                            <Package size={24} className="text-neutral-400" />
+                    <nav className="flex flex-col gap-2">
+                        <Button
+                            variant="ghost"
+                            className={`w-12 h-12 rounded-xl p-0 hover:bg-neutral-800 transition-colors ${view === 'catalog' ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'text-neutral-400'}`}
+                            onClick={() => setView('catalog')}
+                            title="Catalogue"
+                        >
+                            <Package size={22} />
                         </Button>
-                        <Button variant="ghost" className="w-12 h-12 rounded-xl p-0 hover:bg-neutral-800">
-                            <ShoppingCart size={24} className="text-neutral-400" />
+                        <Button
+                            variant="ghost"
+                            className={`w-12 h-12 rounded-xl p-0 hover:bg-neutral-800 transition-colors ${view === 'history' ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'text-neutral-400'}`}
+                            onClick={() => setView('history')}
+                            title="Ventes du jour"
+                        >
+                            <History size={22} />
                         </Button>
                     </nav>
                     <div className="mt-auto flex flex-col items-center gap-2">
@@ -233,7 +263,7 @@ function POSPageContent() {
                     </div>
                 </aside>
 
-                {/* Main Content: Product Catalog */}
+                {/* Main Content */}
                 <main className="flex-1 flex flex-col p-6 overflow-hidden">
                     <header className="flex justify-between items-center mb-8">
                         <motion.div
@@ -242,9 +272,9 @@ function POSPageContent() {
                         >
                             <div className="flex items-center gap-4">
                                 <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-white to-neutral-500 bg-clip-text text-transparent uppercase">
-                                    POINT DE VENTE
+                                    {view === 'catalog' ? 'POINT DE VENTE' : 'VENTES DU JOUR'}
                                 </h1>
-                                {(!profile?.assignedPosId && pointsOfSale && pointsOfSale.length > 0) && (
+                                {view === 'catalog' && (!profile?.assignedPosId && pointsOfSale && pointsOfSale.length > 0) && (
                                     <Select value={selectedPosId || ''} onValueChange={setSelectedPosId}>
                                         <SelectTrigger className="w-[200px] h-8 bg-neutral-900 border-neutral-800 text-white rounded-xl">
                                             <SelectValue placeholder="Sélectionner un PdV" />
@@ -256,70 +286,120 @@ function POSPageContent() {
                                         </SelectContent>
                                     </Select>
                                 )}
-                                {profile?.assignedPosId && pointsOfSale?.find(p => p.id === profile.assignedPosId) && (
+                                {view === 'catalog' && profile?.assignedPosId && pointsOfSale?.find(p => p.id === profile.assignedPosId) && (
                                     <Badge variant="outline" className="text-xs bg-neutral-800 text-neutral-300 border-neutral-700">
                                         {pointsOfSale?.find(p => p.id === profile.assignedPosId)?.name}
                                     </Badge>
                                 )}
+                                {view === 'history' && (
+                                    <div className="flex gap-3">
+                                        <Badge className="bg-indigo-600/20 text-indigo-400 border-indigo-600/30">
+                                            {todaySales.length} vente{todaySales.length !== 1 ? 's' : ''}
+                                        </Badge>
+                                        <Badge className="bg-emerald-600/20 text-emerald-400 border-emerald-600/30">
+                                            {todayTotal.toLocaleString()} FCFA
+                                        </Badge>
+                                    </div>
+                                )}
                             </div>
-                            <p className="text-neutral-500 text-[10px] font-bold uppercase tracking-[0.3em] mt-1">Expérience de vente nouvelle génération</p>
+                            <p className="text-neutral-500 text-[10px] font-bold uppercase tracking-[0.3em] mt-1">
+                                {view === 'catalog' ? "Expérience de vente nouvelle génération" : `Récapitulatif du ${new Date().toLocaleDateString('fr-FR')}`}
+                            </p>
                         </motion.div>
-                        <div className="relative w-96 group">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600 group-focus-within:text-indigo-500 transition-colors" size={18} />
-                            <Input
-                                autoFocus
-                                placeholder="Rechercher par nom ou catégorie..."
-                                className="pl-12 bg-neutral-900/50 border-neutral-800 h-12 focus:ring-2 focus:ring-indigo-500/30 rounded-2xl transition-all placeholder:text-neutral-700"
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                            />
-                        </div>
+                        {view === 'catalog' && (
+                            <div className="relative w-96 group">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600 group-focus-within:text-indigo-500 transition-colors" size={18} />
+                                <Input
+                                    autoFocus
+                                    placeholder="Rechercher par nom ou catégorie..."
+                                    className="pl-12 bg-neutral-900/50 border-neutral-800 h-12 focus:ring-2 focus:ring-indigo-500/30 rounded-2xl transition-all placeholder:text-neutral-700"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                />
+                            </div>
+                        )}
                     </header>
 
-                    <section className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                            <AnimatePresence mode="popLayout">
-                                {filteredProducts.map((product) => (
-                                    <motion.div
-                                        key={product.id}
-                                        layout
-                                        initial={{ opacity: 0, scale: 0.9 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        exit={{ opacity: 0, scale: 0.9 }}
-                                        whileHover={{ y: -4 }}
-                                        onClick={() => addItem(product)}
-                                    >
-                                        <Card className="bg-neutral-900 border-neutral-800 overflow-hidden cursor-pointer group hover:border-indigo-500/50 transition-colors">
-                                            <div className="aspect-square relative bg-neutral-800">
-                                                {product.imageUrl ? (
-                                                    <Image src={product.imageUrl} alt={product.name} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized />
-                                                ) : (
-                                                    <div className="w-full h-full flex items-center justify-center">
-                                                        <Package className="text-neutral-700" size={48} />
+                    {/* CATALOG VIEW */}
+                    {view === 'catalog' && (
+                        <section className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                                <AnimatePresence mode="popLayout">
+                                    {filteredProducts.map((product) => (
+                                        <motion.div
+                                            key={product.id}
+                                            layout
+                                            initial={{ opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.9 }}
+                                            whileHover={{ y: -4 }}
+                                            onClick={() => addItem(product)}
+                                        >
+                                            <Card className="bg-neutral-900 border-neutral-800 overflow-hidden cursor-pointer group hover:border-indigo-500/50 transition-colors">
+                                                <div className="aspect-square relative bg-neutral-800">
+                                                    {product.imageUrl ? (
+                                                        <Image src={product.imageUrl} alt={product.name} fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center">
+                                                            <Package className="text-neutral-700" size={48} />
+                                                        </div>
+                                                    )}
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
+                                                        <span className="text-xs font-medium text-white bg-indigo-600 px-2 py-1 rounded-lg">Ajouter au panier</span>
                                                     </div>
-                                                )}
-                                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
-                                                    <span className="text-xs font-medium text-white bg-indigo-600 px-2 py-1 rounded-lg">Ajouter au panier</span>
                                                 </div>
+                                                <CardContent className="p-4">
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <p className="text-sm font-medium text-neutral-400">{product.category}</p>
+                                                        <span className="text-xs text-neutral-500">
+                                                            Stock: {company?.stockType === 'per-pos' && selectedPosId
+                                                                ? (product.stockByPos?.[selectedPosId] || 0)
+                                                                : product.stock}
+                                                        </span>
+                                                    </div>
+                                                    <h3 className="font-semibold text-lg leading-tight mb-2 truncate">{product.name}</h3>
+                                                    <p className="text-indigo-400 font-bold text-xl">{product.price.toLocaleString()} FCFA</p>
+                                                </CardContent>
+                                            </Card>
+                                        </motion.div>
+                                    ))}
+                                </AnimatePresence>
+                            </div>
+                        </section>
+                    )} {/* end catalog view */}
+
+                    {/* HISTORY VIEW */}
+                    {view === 'history' && (
+                        <section className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3">
+                            {todaySales.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full text-neutral-600 gap-3">
+                                    <Receipt size={48} className="opacity-30" />
+                                    <p className="text-sm font-medium">Aucune vente enregistrée aujourd'hui</p>
+                                </div>
+                            ) : (
+                                todaySales.map((sale) => (
+                                    <div key={sale.id} className="bg-neutral-900/60 border border-neutral-800 rounded-xl p-4 hover:border-indigo-800 transition-colors">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <div className="flex items-center gap-2 text-neutral-400 text-xs">
+                                                <Clock size={13} className="text-indigo-400" />
+                                                {new Date(sale.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                                <span className="text-neutral-700">•</span>
+                                                <span>{sale.items.length} article{sale.items.length !== 1 ? 's' : ''}</span>
                                             </div>
-                                            <CardContent className="p-4">
-                                                <div className="flex justify-between items-start mb-1">
-                                                    <p className="text-sm font-medium text-neutral-400">{product.category}</p>
-                                                    <span className="text-xs text-neutral-500">
-                                                        Stock: {company?.stockType === 'per-pos' && selectedPosId
-                                                            ? (product.stockByPos?.[selectedPosId] || 0)
-                                                            : product.stock}
-                                                    </span>
-                                                </div>
-                                                <h3 className="font-semibold text-lg leading-tight mb-2 truncate">{product.name}</h3>
-                                                <p className="text-indigo-400 font-bold text-xl">{product.price.toLocaleString()} FCFA</p>
-                                            </CardContent>
-                                        </Card>
-                                    </motion.div>
-                                ))}
-                            </AnimatePresence>
-                        </div>
-                    </section>
+                                            <span className="text-emerald-400 font-bold text-sm">{sale.total.toLocaleString()} FCFA</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5 mt-1">
+                                            {sale.items.map((item, i) => (
+                                                <span key={i} className="text-[11px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full">
+                                                    {item.name} x{item.quantity}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </section>
+                    )}
                 </main>
 
                 {/* Right Sidebar: Cart */}

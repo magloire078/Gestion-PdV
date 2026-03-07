@@ -1,4 +1,4 @@
-import { db, Product, Sale } from './db';
+import { db, Product, type Sale } from './db';
 import {
     collection,
     getDocs,
@@ -97,7 +97,6 @@ export class DataService {
                             });
 
                             await db.products.update(id, { synced: 1 });
-                            console.log('Synced product to Firestore:', id);
                         }
                     } catch (error) {
                         console.error('Failed to sync product:', product.id, error);
@@ -117,14 +116,61 @@ export class DataService {
         const sale: Sale = {
             ...saleData,
             id,
-            synced: 0
+            synced: 0,
+            status: (saleData as any).status || 'completed'
         };
+
+        // Deduct stock for each item
+        for (const item of sale.items) {
+            const product = await db.products.get(item.productId);
+            if (product) {
+                if (sale.posId && product.stockByPos && product.stockByPos[sale.posId] !== undefined) {
+                    product.stockByPos[sale.posId] -= item.quantity;
+                } else {
+                    product.stock -= item.quantity;
+                }
+                product.synced = 0;
+                await db.products.put(product);
+            }
+        }
 
         // Save locally first
         await db.sales.add(sale);
 
         if (typeof window !== 'undefined' && navigator.onLine) {
             await this.syncPendingSales(sale.companyId);
+            await this.syncPendingProducts(sale.companyId); // Sync stock changes
+        }
+    }
+
+    static async refundSale(saleId: string, companyId: string): Promise<void> {
+        const sale = await db.sales.get(saleId);
+        if (!sale || sale.companyId !== companyId) throw new Error("Sale not found or unauthorized");
+        if ((sale as any).status === 'refunded') throw new Error("Sale is already refunded");
+
+        // Mark as refunded
+        (sale as any).status = 'refunded';
+        sale.synced = 0;
+
+        // Restore stock
+        for (const item of sale.items) {
+            const product = await db.products.get(item.productId);
+            if (product) {
+                if (sale.posId && product.stockByPos && product.stockByPos[sale.posId] !== undefined) {
+                    product.stockByPos[sale.posId] += item.quantity;
+                } else {
+                    product.stock += item.quantity;
+                }
+                product.synced = 0;
+                await db.products.put(product);
+            }
+        }
+
+        await db.sales.put(sale);
+
+        if (typeof window !== 'undefined' && navigator.onLine) {
+            await this.syncPendingSales(companyId);
+            await this.syncPendingProducts(companyId); // Sync stock changes
         }
     }
 
@@ -156,7 +202,6 @@ export class DataService {
 
                             // Mark as synced locally
                             await db.sales.update(id, { synced: 1 });
-                            console.log('Synced sale to Firestore, local/cloud ID:', id);
                         }
                     } catch (error) {
                         console.error('Failed to sync sale:', sale.id, error);
