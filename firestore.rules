@@ -53,17 +53,21 @@ service cloud.firestore {
     // companies/{companyId}
     // ─────────────────────────────────────────────────────────────────────
     match /companies/{companyId} {
-      // A user can read & create their own company (companyId == uid for owners).
-      // Employees can read their assigned company.
+      // A company can be read by its owner, its employees, or superadmins.
       allow read: if isAuth() && (
         isSuperAdmin() ||
-        request.auth.uid == companyId ||
+        request.auth.uid == resource.data.ownerId ||
         (hasProfile() && getUserProfile().companyId == companyId)
       );
-      // Only the owner or superadmin can write company data.
-      allow write: if isAuth() && (
+
+      // A user can create a company if they set themselves as the owner.
+      // This is used during signup.
+      allow create: if isAuth() && request.resource.data.ownerId == request.auth.uid;
+
+      // Only the owner or a superadmin can update or delete company data.
+      allow update, delete: if isAuth() && (
         isSuperAdmin() ||
-        request.auth.uid == companyId
+        resource.data.ownerId == request.auth.uid
       );
     }
 

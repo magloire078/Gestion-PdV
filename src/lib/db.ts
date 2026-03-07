@@ -1,4 +1,4 @@
-import Dexie, { type Table } from 'dexie';
+import Dexie, { type EntityTable } from 'dexie';
 
 export interface Product {
     id: string;
@@ -31,17 +31,25 @@ export interface Sale {
     synced: number; // 0 or 1
 }
 
-export class POSDatabase extends Dexie {
-    products!: Table<Product>;
-    sales!: Table<Sale>;
-
-    constructor() {
-        super('POSDatabase');
-        this.version(5).stores({
-            products: 'id, companyId, name, category, barcode, synced',
-            sales: 'id, companyId, posId, cashierId, timestamp, status, synced'
-        });
-    }
+export interface StockMovement {
+    id: string;
+    companyId: string;
+    productId: string;
+    type: 'in' | 'out' | 'adjustment';
+    quantity: number;
+    date: number;
+    reason?: string;
+    synced: number; // 0 or 1
 }
 
-export const db = new POSDatabase();
+export const db = new Dexie('POSDatabase') as Dexie & {
+    products: EntityTable<Product, 'id'>;
+    sales: EntityTable<Sale, 'id'>;
+    stockMovements: EntityTable<StockMovement, 'id'>;
+};
+
+db.version(6).stores({
+    products: 'id, companyId, name, category, barcode, synced',
+    sales: 'id, companyId, posId, cashierId, timestamp, status, synced',
+    stockMovements: 'id, companyId, productId, type, date, synced'
+});

@@ -51,6 +51,10 @@ export class DataService {
     }
 
     static async saveProduct(productData: Omit<Product, 'id' | 'synced'>): Promise<string> {
+        if (!productData.companyId) {
+            throw new Error('Une ID d\'entreprise est requise pour enregistrer un produit.');
+        }
+
         const firestore = this.getFirestoreInstance();
         const productsCol = collection(firestore, 'products');
         const id = doc(productsCol).id;
@@ -66,7 +70,9 @@ export class DataService {
 
         // Try to sync immediately if online
         if (typeof window !== 'undefined' && navigator.onLine) {
-            this.syncPendingProducts(product.companyId).catch(console.error);
+            this.syncPendingProducts(product.companyId).catch(err => {
+                console.error('Initial sync failed for product:', id, err);
+            });
         }
 
         return id;
