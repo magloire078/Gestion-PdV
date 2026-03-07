@@ -42,11 +42,10 @@ service cloud.firestore {
     // users/{userId}
     // ─────────────────────────────────────────────────────────────────────
     match /users/{userId} {
-      // 1. Self access (base case to prevent recursion in get() calls)
-      allow read, write: if isAuth() && request.auth.uid == userId;
-      
-      // 2. SuperAdmin access (evaluated only if Rule 1 is false)
-      allow read, write: if isSuperAdmin();
+      // Combined rule to use short-circuiting: 
+      // If the user is accessing their own document, the second part (isSuperAdmin) 
+      // is never evaluated, avoiding infinite recursion.
+      allow read, write: if isAuth() && (request.auth.uid == userId || isSuperAdmin());
     }
 
     // ─────────────────────────────────────────────────────────────────────
