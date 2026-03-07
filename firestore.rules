@@ -1,8 +1,189 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Helper functions
+    // ─────────────────────────────────────────────────────────────────────
+
+    // Is the request from an authenticated user?
+    function isAuth() {
+      return request.auth != null;
     }
+
+    // Is the request from the specific user?
+    function isSelf(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    // Is the requesting user a superadmin?
+    function isSuperAdmin() {
+      return isAuth() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin';
+    }
+
+    // Get the requesting user's profile (cached in get())
+    function getUserProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Does the user's profile exist?
+    function hasProfile() {
+      return isAuth() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Does the resource belong to the user's company?
+    function belongsToMyCompany(companyId) {
+      return isAuth() && hasProfile() && getUserProfile().companyId == companyId;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // users/{userId}
+    // ─────────────────────────────────────────────────────────────────────
+    match /users/{userId} {
+      // A user can read & write their own profile.
+      // Superadmins can read all profiles.
+      allow read: if isSelf(userId) || isSuperAdmin();
+      // A user can create or update their own profile document.
+      allow write: if isSelf(userId) || isSuperAdmin();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // companies/{companyId}
+    // ─────────────────────────────────────────────────────────────────────
+    match /companies/{companyId} {
+      // A user can read & create their own company (companyId == uid for owners).
+      // Employees can read their assigned company.
+      allow read: if isAuth() && (
+        isSuperAdmin() ||
+        request.auth.uid == companyId ||
+        (hasProfile() && getUserProfile().companyId == companyId)
+      );
+      // Only the owner or superadmin can write company data.
+      allow write: if isAuth() && (
+        isSuperAdmin() ||
+        request.auth.uid == companyId
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // products/{productId}
+    // ─────────────────────────────────────────────────────────────────────
+    match /products/{productId} {
+      allow read, write: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(resource.data.companyId)
+      );
+      // Allow create: new doc, check incoming data
+      allow create: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(request.resource.data.companyId)
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // sales/{saleId}
+    // ─────────────────────────────────────────────────────────────────────
+    match /sales/{saleId} {
+      allow read, write: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(resource.data.companyId)
+      );
+      allow create: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(request.resource.data.companyId)
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // invoices/{invoiceId}
+    // ─────────────────────────────────────────────────────────────────────
+    match /invoices/{invoiceId} {
+      allow read, write: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(resource.data.companyId)
+      );
+      allow create: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(request.resource.data.companyId)
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // expenses/{expenseId}
+    // ─────────────────────────────────────────────────────────────────────
+    match /expenses/{expenseId} {
+      allow read, write: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(resource.data.companyId)
+      );
+      allow create: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(request.resource.data.companyId)
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // clients/{clientId}
+    // ─────────────────────────────────────────────────────────────────────
+    match /clients/{clientId} {
+      allow read, write: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(resource.data.companyId)
+      );
+      allow create: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(request.resource.data.companyId)
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // stockMovements/{movementId}
+    // ─────────────────────────────────────────────────────────────────────
+    match /stockMovements/{movementId} {
+      allow read, write: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(resource.data.companyId)
+      );
+      allow create: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(request.resource.data.companyId)
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // pointsOfSale/{posId}
+    // ─────────────────────────────────────────────────────────────────────
+    match /pointsOfSale/{posId} {
+      allow read: if isAuth() && (
+        isSuperAdmin() ||
+        belongsToMyCompany(resource.data.companyId)
+      );
+      // Only owners and superadmins can manage POS
+      allow write: if isAuth() && (
+        isSuperAdmin() ||
+        (belongsToMyCompany(resource.data.companyId) && getUserProfile().role == 'owner')
+      );
+      allow create: if isAuth() && (
+        isSuperAdmin() ||
+        (belongsToMyCompany(request.resource.data.companyId) && getUserProfile().role == 'owner')
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // employees/{employeeId}  (if you have this collection)
+    // ─────────────────────────────────────────────────────────────────────
+    match /employees/{employeeId} {
+      allow read, write: if isAuth() && (
+        isSuperAdmin() ||
+        (hasProfile() && (getUserProfile().role == 'owner' || getUserProfile().role == 'superadmin') && belongsToMyCompany(resource.data.companyId))
+      );
+      allow create: if isAuth() && (
+        isSuperAdmin() ||
+        (hasProfile() && getUserProfile().role == 'owner' && belongsToMyCompany(request.resource.data.companyId))
+      );
+    }
+
   }
 }

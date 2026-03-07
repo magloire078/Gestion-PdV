@@ -53,8 +53,9 @@ export function useProfile() {
             // or the user doesn't have permissions to listen to it before creation.
             // We'll treat this as "no profile" instead of a hard error to allow auto-creation.
             if (err.code === 'permission-denied') {
-                console.warn("Permission denied for profile read, treating as missing profile:", err);
+                // Expected for new users whose profile doesn't exist yet
                 setProfile(null);
+
             } else {
                 console.error("Error fetching user profile:", err);
                 setError(err);

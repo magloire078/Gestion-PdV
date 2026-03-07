@@ -35,7 +35,7 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Logo } from "@/components/logo";
 import { SyncStatus } from "@/components/sync-status";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth, useUser, useFirebase, useMemoFirebase } from "@/firebase";
 import { doc, setDoc } from "firebase/firestore";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -163,13 +163,15 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
 
   const isUserLoading = isAuthLoading || isProfileLoading;
 
-  // Auto-create/fix profile and company logic
+  const hasAttemptedCreateRef = useRef(false);
+
+  // Auto-create profile and company for brand-new users (first time sign-up)
   useEffect(() => {
     if (!user || !firestore || isUserLoading) return;
 
-    // Only if we are sure profile and company are missing after loading, and there's no auth/permission error
-    if (!profile && !isProfileLoading && !profileError) {
-      console.log("Creating default profile and company for user:", user.uid);
+    // Only attempt once per session per user, and only if profile is truly missing
+    if (!profile && !isProfileLoading && !hasAttemptedCreateRef.current) {
+      hasAttemptedCreateRef.current = true;
       const userRef = doc(firestore, 'users', user.uid);
       const role = user.email === 'magloire078@gmail.com' ? 'superadmin' : 'owner';
       setDoc(userRef, {
@@ -178,7 +180,10 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
         role: role,
         companyId: user.uid,
         createdAt: new Date().toISOString()
-      }, { merge: true }).catch(err => console.error("Error creating default profile:", err));
+      }, { merge: true }).catch(() => {
+        // Silently fail — the user may not have a profile yet due to rules propagation delay.
+        // They will be redirected to login or shown a blank state.
+      });
 
       const companyRef = doc(firestore, 'companies', user.uid);
       setDoc(companyRef, {
@@ -188,7 +193,9 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
         creationDate: new Date().toISOString(),
         subscriptionStatus: 'active',
         subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      }, { merge: true }).catch(err => console.error("Error creating default company:", err));
+      }, { merge: true }).catch(() => {
+        // Silently fail — same reason as above.
+      });
     }
   }, [user, firestore, profile, isUserLoading, isProfileLoading]);
 
