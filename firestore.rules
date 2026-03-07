@@ -42,11 +42,11 @@ service cloud.firestore {
     // users/{userId}
     // ─────────────────────────────────────────────────────────────────────
     match /users/{userId} {
-      // A user can read & write their own profile.
-      // Superadmins can read all profiles.
-      allow read: if isSelf(userId) || isSuperAdmin();
-      // A user can create or update their own profile document.
-      allow write: if isSelf(userId) || isSuperAdmin();
+      // 1. Self access (base case to prevent recursion in get() calls)
+      allow read, write: if isAuth() && request.auth.uid == userId;
+      
+      // 2. SuperAdmin access (evaluated only if Rule 1 is false)
+      allow read, write: if isSuperAdmin();
     }
 
     // ─────────────────────────────────────────────────────────────────────
